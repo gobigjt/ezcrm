@@ -17,11 +17,7 @@ import { SettingsModule }       from './modules/settings/settings.module';
 import { ExportModule }         from './modules/export/export.module';
 import { NotificationsModule }  from './modules/notifications/notifications.module';
 import { TenantsModule }        from './modules/tenants/tenants.module';
-import { BucketAssetsController } from './common/controllers/bucket-assets.controller';
-import { ObjectStorageService } from './common/services/object-storage.service';
-
 @Module({
-  controllers: [BucketAssetsController],
   imports: [
     ScheduleModule.forRoot(),
     DatabaseModule,
@@ -42,6 +38,5 @@ import { ObjectStorageService } from './common/services/object-storage.service';
     NotificationsModule,
     TenantsModule,
   ],
-  providers: [ObjectStorageService],
 })
 export class AppModule {}

@@ -2,13 +2,11 @@ import { Injectable, BadRequestException, ConflictException, UnauthorizedExcepti
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
-import { existsSync, unlinkSync } from 'fs';
-import { basename, join } from 'path';
 import { DatabaseService } from '../../database/database.service';
 import { AuditService }   from '../audit/audit.service';
+import { deleteUploadByUrl } from '../../common/utils/upload-files';
 import { LoginDto }    from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { ObjectStorageService } from '../../common/services/object-storage.service';
 
 const REFRESH_DAYS = Number(process.env.REFRESH_TOKEN_DAYS || 7);
 
@@ -41,7 +39,6 @@ export class AuthService {
     private readonly db:    DatabaseService,
     private readonly jwt:   JwtService,
     private readonly audit: AuditService,
-    private readonly objectStorage: ObjectStorageService,
   ) {}
 
   private signAccess(user: AuthTokenUser) {
@@ -212,32 +209,13 @@ export class AuthService {
     return res.rows[0];
   }
 
-  private async removeAvatarFile(prevUrl: string | null | undefined) {
-    if (!prevUrl || typeof prevUrl !== 'string') return;
-    if (/^https?:\/\//i.test(prevUrl)) {
-      try {
-        await this.objectStorage.deleteByPublicUrl(prevUrl);
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
-    if (!prevUrl.startsWith('/uploads/users/')) return;
-    const fp = join(process.cwd(), 'uploads', 'users', basename(prevUrl));
-    try {
-      if (existsSync(fp)) unlinkSync(fp);
-    } catch {
-      /* ignore */
-    }
-  }
-
   /** Save profile image; returns updated user (same shape as `me`). */
-  async setAvatarFromUpload(userId: number, file: Express.Multer.File) {
+  async setAvatarFromUpload(userId: number, filename: string) {
     const prevRes = await this.db.query('SELECT avatar_url FROM users WHERE id=$1', [userId]);
     const prev = prevRes.rows[0]?.avatar_url as string | undefined;
-    await this.removeAvatarFile(prev);
-    const uploaded = await this.objectStorage.uploadPublicImage(file, 'users/avatars');
-    await this.db.query('UPDATE users SET avatar_url=$2, updated_at=NOW() WHERE id=$1', [userId, uploaded.url]);
+    deleteUploadByUrl(prev);
+    const rel = `/uploads/users/${filename}`;
+    await this.db.query('UPDATE users SET avatar_url=$2, updated_at=NOW() WHERE id=$1', [userId, rel]);
     this.audit.log({ user_id: userId, action: 'update_avatar', module: 'auth' });
     return this.me(userId);
   }
@@ -245,7 +223,7 @@ export class AuthService {
   async clearAvatar(userId: number) {
     const prevRes = await this.db.query('SELECT avatar_url FROM users WHERE id=$1', [userId]);
     const prev = prevRes.rows[0]?.avatar_url as string | undefined;
-    await this.removeAvatarFile(prev);
+    deleteUploadByUrl(prev);
     await this.db.query('UPDATE users SET avatar_url=NULL, updated_at=NOW() WHERE id=$1', [userId]);
     this.audit.log({ user_id: userId, action: 'clear_avatar', module: 'auth' });
     return this.me(userId);
