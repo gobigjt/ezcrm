@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// API base URL for the mobile app.
 ///
@@ -14,13 +14,23 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, Tar
 ///
 /// No trailing slash (trailing slashes are normalized in [ApiClient.normalizeApiBase]).
 class WebAppConfig {
+  static const _railwayApi = 'https://ezcrm-production.up.railway.app/api';
+
   static String get apiBaseUrl {
     const fromEnv = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (fromEnv.isNotEmpty) return fromEnv;
-    if (kIsWeb) return 'http://127.0.0.1:4000/api';
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:4000/api';
+    if (kIsWeb) {
+      // On web, derive API host from the page origin so LAN access works.
+      try {
+        final origin = Uri.base;
+        if (origin.host.isNotEmpty) {
+          return '${origin.scheme}://${origin.host}:4000/api';
+        }
+      } catch (_) {}
+      return 'http://127.0.0.1:4000/api';
     }
-    return 'http://127.0.0.1:4000/api';
+    // Android/iOS physical device — use Railway so it works on WiFi AND mobile data.
+    // Override for local dev: flutter run --dart-define=API_BASE_URL=http://192.168.1.2:4000/api
+    return _railwayApi;
   }
 }
