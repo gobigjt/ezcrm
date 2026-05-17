@@ -24,7 +24,31 @@
       "Bash(git -C c:/dev/herd-projects/crm diff 6a60aa3..HEAD -- frontend/src/pages/crm/CRMMastersPage.jsx)",
       "Bash(git -C c:/dev/herd-projects/crm diff 6a60aa3..HEAD -- frontend/src/pages/crm/CRMRoutes.jsx)",
       "Bash(grep -n \"CREATE TABLE leads\\\\|created_by\\\\|user_id\" c:/dev/herd-projects/crm/backend/src/database/migrations/*.sql)",
-      "Bash(grep -rn \"ALTER TABLE leads\\\\|created_by\" c:/dev/herd-projects/crm/backend/src/database/migrations/*.sql)"
+      "Bash(grep -rn \"ALTER TABLE leads\\\\|created_by\" c:/dev/herd-projects/crm/backend/src/database/migrations/*.sql)",
+      "Bash(findstr \":4000\")",
+      "Bash(findstr \"LISTENING\")",
+      "Bash(taskkill /PID 2092 /F)",
+      "PowerShell(Stop-Process -Id 2092 -Force)",
+      "Bash(curl -s -X POST http://localhost:4000/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"iglootiles@yahoo.com\",\"password\":\"Admin@123\",\"tenant_slug\":\"igloo-tiles\"}')",
+      "Bash(flutter run *)",
+      "Bash(curl -s -X POST http://localhost:4000/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"iglootiles@yahoo.com\",\"password\":\"Admin@123\"}')",
+      "Bash(wmic process *)",
+      "PowerShell(Stop-Process -Id 7520 -Force)",
+      "PowerShell(Stop-Process -Id 1348,7268,19136,12896,16236,19004 -Force -ErrorAction SilentlyContinue)",
+      "Bash(ipconfig)",
+      "Bash(findstr \"IPv4\")",
+      "PowerShell(Get-Process | Where-Object { $_.Name -match \"flutter\" -or \\($_.Name -match \"dart\" -and $_.CommandLine -match \"flutter\"\\) } | Select-Object Id, Name | Format-Table)",
+      "PowerShell(Stop-Process -Id 17964 -Force -ErrorAction SilentlyContinue)",
+      "Bash(curl -s http://localhost:4000/api/auth/login -X POST -H \"Content-Type: application/json\" -d '{\"email\":\"iglootiles@yahoo.com\",\"password\":\"Admin@123\"}')",
+      "Bash(grep -v \"^$\")",
+      "PowerShell(Stop-Process -Id 9016 -Force -ErrorAction SilentlyContinue)",
+      "Bash(curl -s http://localhost:3001)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3002\")",
+      "Bash(findstr \"LISTEN\")",
+      "Bash(curl -s http://localhost:4000/api/auth/login -X POST -H \"Content-Type: application/json\" -d '{}')",
+      "PowerShell(Stop-Process -Id 15640 -Force -ErrorAction SilentlyContinue)",
+      "Bash(curl -s http://localhost:3002)"
     ]
   }
 }

@@ -9,6 +9,7 @@ export class RedisService implements OnModuleDestroy {
   constructor() {
     const url = process.env.REDIS_URL || 'redis://localhost:6379';
     this.client = new Redis(url, { lazyConnect: true });
+    this.client.on('error', () => { /* suppress unhandled error events when Redis is unavailable */ });
     this.client.connect()
       .then(() => this.logger.log('Redis connected'))
       .catch((err) => this.logger.warn(`Redis unavailable, caching disabled: ${err.message}`));
