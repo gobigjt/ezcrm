@@ -35,12 +35,13 @@ export class LeadsService {
     return base ? `${base}${path}` : path;
   }
 
-  private async notifyCrmLead(userId: number, lead: { id: number; name: string; company?: string | null }, title: string, body?: string | null) {
+  private async notifyCrmLead(userId: number, lead: { id: number; name: string; company?: string | null }, title: string, body?: string | null, tenantId?: number) {
     if (!userId) return;
     const link = this.crmLeadWebLink(lead.id);
     const text = body ?? (lead.company ? String(lead.company) : 'Open to view details');
     await this.notifications.createInAppAndPush({
       user_id: userId,
+      tenant_id: tenantId,
       title,
       body: text,
       type: 'info',
@@ -339,7 +340,8 @@ export class LeadsService {
     const orderBy = `ORDER BY
          CASE l.priority WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 ELSE 2 END,
          l.created_at DESC`;
-    const selectFrom = `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name, um.name AS assigned_manager_name
+    const selectFrom = `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name, um.name AS assigned_manager_name,
+       (SELECT MIN(f.due_date) FROM lead_followups f WHERE f.lead_id=l.id AND f.is_done=FALSE AND f.due_date >= NOW()) AS next_followup_at
        FROM leads l
        LEFT JOIN lead_stages ls ON ls.id=l.stage_id
        LEFT JOIN lead_sources s  ON s.id=l.source_id
@@ -398,7 +400,8 @@ export class LeadsService {
       }
     }
     const res = await this.db.query(
-      `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name, um.name AS assigned_manager_name
+      `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name, um.name AS assigned_manager_name,
+       (SELECT MIN(f.due_date) FROM lead_followups f WHERE f.lead_id=l.id AND f.is_done=FALSE AND f.due_date >= NOW()) AS next_followup_at
        FROM leads l
        LEFT JOIN lead_stages ls ON ls.id=l.stage_id
        LEFT JOIN lead_sources s  ON s.id=l.source_id
@@ -779,16 +782,42 @@ export class LeadsService {
     );
     await this.invalidateDashboardCache();
     const row = res.rows[0];
+
+    const leadRes = await this.db.query('SELECT name, company, tenant_id FROM leads WHERE id=$1', [leadId]);
+    const lead = leadRes.rows[0];
+    const leadName = lead?.name ?? 'Lead';
+    const tenantId = Number(lead?.tenant_id) || undefined;
+
+    // Notify assignee
     if (row.assigned_to) {
-      const lead = await this.get(leadId);
-      const name = lead?.name ?? 'Lead';
       await this.notifyCrmLead(
         Number(row.assigned_to),
-        { id: leadId, name, company: lead?.company },
+        { id: leadId, name: leadName, company: lead?.company ?? null },
         'New task assigned',
         row.description || null,
+        tenantId,
       );
     }
+
+    // Notify admins / sales managers for this tenant
+    if (tenantId) {
+      const admins = await this.db.query(
+        `SELECT id FROM users WHERE is_active=TRUE AND tenant_id=$1 AND role IN ('Admin','Sales Manager','Super Admin')`,
+        [tenantId],
+      );
+      for (const admin of admins.rows) {
+        const adminId = Number(admin.id);
+        if (adminId === Number(row.assigned_to)) continue; // already notified
+        await this.notifyCrmLead(
+          adminId,
+          { id: leadId, name: leadName, company: lead?.company ?? null },
+          'Follow-up task created',
+          row.description || null,
+          tenantId,
+        );
+      }
+    }
+
     return row;
   }
 

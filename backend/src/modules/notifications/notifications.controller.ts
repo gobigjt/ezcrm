@@ -3,13 +3,20 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard }          from '../../common/guards/jwt-auth.guard';
 import { CurrentUser }           from '../../common/decorators/current-user.decorator';
 import { NotificationsService }  from './notifications.service';
+import { WebPushService }        from './web-push.service';
 
 @ApiTags('Notifications')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly svc: NotificationsService) {}
+  constructor(
+    private readonly svc: NotificationsService,
+    private readonly webPush: WebPushService,
+  ) {}
+
+  @Get('vapid-public-key')
+  vapidPublicKey() { return { publicKey: this.webPush.vapidPublicKey }; }
 
   @Get()
   list(@CurrentUser() u: any) { return this.svc.list(u.id, u); }

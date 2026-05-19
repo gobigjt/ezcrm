@@ -25,7 +25,7 @@ class NotificationsController extends GetxController with WidgetsBindingObserver
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
     _bindPushListeners();
-    load();
+    load().then((_) => _markAllReadAndSync());
   }
 
   @override
@@ -75,9 +75,18 @@ class NotificationsController extends GetxController with WidgetsBindingObserver
     try {
       await _auth.authorizedRequest(method: 'PATCH', path: '/notifications/$id/read');
       await load();
+      _auth.unreadNotifCount.value = unreadCount.value;
     } finally {
       isMutating.value = false;
     }
+  }
+
+  Future<void> _markAllReadAndSync() async {
+    try {
+      await _auth.authorizedRequest(method: 'PATCH', path: '/notifications/read-all');
+      unreadCount.value = 0;
+      _auth.unreadNotifCount.value = 0;
+    } catch (_) {}
   }
 
   Future<void> markAllRead() async {
@@ -85,6 +94,7 @@ class NotificationsController extends GetxController with WidgetsBindingObserver
     try {
       await _auth.authorizedRequest(method: 'PATCH', path: '/notifications/read-all');
       await load();
+      _auth.unreadNotifCount.value = 0;
     } finally {
       isMutating.value = false;
     }

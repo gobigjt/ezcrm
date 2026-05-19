@@ -27,6 +27,7 @@ class CrmLead {
     this.assignedTo,
     this.assignedManagerId,
     this.isConverted = false,
+    this.nextFollowupAt,
   });
 
   static final CrmLead placeholder = CrmLead(
@@ -44,6 +45,7 @@ class CrmLead {
     assignedTo: null,
     assignedManagerId: null,
     isConverted: false,
+    nextFollowupAt: null,
   );
 
   final int id;
@@ -71,6 +73,7 @@ class CrmLead {
   final int? assignedTo;
   final int? assignedManagerId;
   final bool isConverted;
+  final DateTime? nextFollowupAt;
 
   /// Primary line for list cards (name, else phone).
   String get displayTitle {
@@ -134,6 +137,9 @@ class CrmLead {
       assignedTo: _nullableId(json['assigned_to']),
       assignedManagerId: _nullableId(json['assigned_manager_id']),
       isConverted: json['is_converted'] == true,
+      nextFollowupAt: json['next_followup_at'] != null
+          ? DateTime.tryParse(json['next_followup_at'].toString())
+          : null,
     );
   }
 }

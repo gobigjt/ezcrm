@@ -264,12 +264,12 @@ class SalesView extends GetView<SalesController> {
       appBar: AppBar(
         backgroundColor: _SalesChrome.barBg,
         foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actionsIconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white, size: 18),
+        actionsIconTheme: const IconThemeData(color: Colors.white, size: 18),
         elevation: 0,
         title: const Text(
           'Quotes & Invoices',
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
         actions: [
           IconButton(

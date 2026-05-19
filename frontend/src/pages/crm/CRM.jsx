@@ -373,7 +373,6 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
   const [actForm,    setActForm]    = useState({ type: 'note', description: '' });
   const [fuForm,     setFuForm]     = useState({ due_date: '', description: '', assigned_to: '' });
   const [fuEditId,   setFuEditId]   = useState(null);
-  const [fuEditForm, setFuEditForm] = useState({ due_date: '', description: '', assigned_to: '' });
   const [saving,     setSaving]     = useState(false);
   const [salesLoading, setSalesLoading] = useState(false);
   const [detail,     setDetail]     = useState(lead);
@@ -422,19 +421,29 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
     } finally { setSaving(false); }
   };
 
-  const addFollowup = async (e) => {
+  const submitFollowup = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/crm/leads/${lead.id}/followups`, {
-        ...fuForm,
-        due_date: datetimeLocalInputToApiIso(fuForm.due_date),
-      });
+      if (fuEditId != null) {
+        await api.patch(`/crm/leads/${lead.id}/followups/${fuEditId}`, {
+          due_date: datetimeLocalInputToApiIso(fuForm.due_date),
+          description: fuForm.description,
+          assigned_to: fuForm.assigned_to === '' ? null : Number(fuForm.assigned_to),
+        });
+        showToast('Task updated', 'success');
+      } else {
+        await api.post(`/crm/leads/${lead.id}/followups`, {
+          ...fuForm,
+          due_date: datetimeLocalInputToApiIso(fuForm.due_date),
+        });
+        showToast('Task created successfully', 'success');
+      }
       setFuForm({ due_date: '', description: '', assigned_to: '' });
+      setFuEditId(null);
       await reload();
-      showToast('Task created successfully', 'success');
     } catch (err) {
-      showToast(apiErrorMessage(err, 'Could not create task'), 'error');
+      showToast(apiErrorMessage(err, fuEditId != null ? 'Could not update task' : 'Could not create task'), 'error');
     } finally { setSaving(false); }
   };
 
@@ -445,32 +454,20 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
 
   const openFuEdit = (f) => {
     setFuEditId(f.id);
-    setFuEditForm({
+    setFuForm({
       due_date: toDatetimeLocalValue(f.due_date),
       description: f.description || '',
       assigned_to: f.assigned_to != null && f.assigned_to !== '' ? String(f.assigned_to) : '',
     });
   };
 
-  const saveFollowupEdit = async (e) => {
-    e.preventDefault();
+  useEffect(() => {
     if (fuEditId == null) return;
-    setSaving(true);
-    try {
-      await api.patch(`/crm/leads/${lead.id}/followups/${fuEditId}`, {
-        due_date: datetimeLocalInputToApiIso(fuEditForm.due_date),
-        description: fuEditForm.description,
-        assigned_to: fuEditForm.assigned_to === '' ? null : Number(fuEditForm.assigned_to),
-      });
-      setFuEditId(null);
-      reload();
-      showToast('Task updated', 'success');
-    } catch (err) {
-      showToast(apiErrorMessage(err, 'Could not update task'), 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
+    const scroller = document.getElementById('crm-drawer-scroll');
+    if (scroller) scroller.scrollTo({ top: 0, behavior: 'smooth' });
+    const t = setTimeout(() => document.getElementById('crm-fu-date')?.focus(), 400);
+    return () => clearTimeout(t);
+  }, [fuEditId]);
 
   const deleteFollowup = (fid) => {
     promptDestructive(showToast, {
@@ -479,7 +476,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
         setSaving(true);
         try {
           await api.delete(`/crm/leads/${lead.id}/followups/${fid}`);
-          if (fuEditId === fid) setFuEditId(null);
+          if (fuEditId === fid) { setFuEditId(null); setFuForm({ due_date: '', description: '', assigned_to: '' }); }
           reload();
           showToast('Task deleted', 'success');
         } finally {
@@ -768,7 +765,7 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
         </div>
 
         {/* Single scroll: info + timeline + follow-ups (wireframe / mobile parity) */}
-        <div className="flex-1 overflow-y-auto">
+        <div id="crm-drawer-scroll" className="flex-1 overflow-y-auto">
           <div className="p-5 space-y-5">
             <div className="grid grid-cols-2 gap-3">
               {[
@@ -794,6 +791,14 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
                   </button>
                 ))}
               </div>
+              {detail?.created_at && (
+                <div className="flex items-center gap-2 mt-3">
+                  <span className="text-xs text-slate-400 dark:text-slate-500">📅 Created</span>
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
+                    {formatDate(detail.created_at)}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -893,39 +898,11 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
                   Only admins and sales managers can add, edit, or delete tasks. You can still mark tasks done when assigned to you.
                 </p>
               )}
-              {canManageTasks && fuEditId != null && (
-                <form onSubmit={saveFollowupEdit} className="bg-amber-50/80 dark:bg-amber-900/15 rounded-xl p-3 space-y-2 mb-4 border border-amber-200/60 dark:border-amber-800/30">
-                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">Edit task</p>
-                  <Field label="Due Date">
-                    <input type="datetime-local" className={inputCls}
-                      value={fuEditForm.due_date} onChange={e => setFuEditForm(f => ({ ...f, due_date: e.target.value }))}
-                      required />
-                  </Field>
-                  <Field label="Description">
-                    <input className={inputCls} placeholder="e.g. Follow up on proposal…"
-                      value={fuEditForm.description} onChange={e => setFuEditForm(f => ({ ...f, description: e.target.value }))} />
-                  </Field>
-                  <Field label="Assign To">
-                    <select className={selectCls} value={fuEditForm.assigned_to} onChange={e => setFuEditForm(f => ({ ...f, assigned_to: e.target.value }))}>
-                      <option value="">Unassigned</option>
-                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
-                  </Field>
-                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => setFuEditId(null)} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-600">
-                      Cancel
-                    </button>
-                    <button type="submit" disabled={saving}
-                      className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
-                      {saving ? 'Saving…' : 'Save'}
-                    </button>
-                  </div>
-                </form>
-              )}
               {canManageTasks && (
-                <form onSubmit={addFollowup} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 space-y-2 mb-4">
+                <form onSubmit={submitFollowup} className={`rounded-xl p-3 space-y-2 mb-4 ${fuEditId != null ? 'bg-amber-50/80 dark:bg-amber-900/15 border border-amber-300 dark:border-amber-700' : 'bg-slate-50 dark:bg-slate-800/50'}`}>
+                  {fuEditId != null && <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Editing task</p>}
                   <Field label="Due Date">
-                    <input type="datetime-local" className={inputCls}
+                    <input id="crm-fu-date" type="datetime-local" className={inputCls}
                       value={fuForm.due_date} onChange={e => setFuForm(f => ({ ...f, due_date: e.target.value }))}
                       required />
                   </Field>
@@ -935,14 +912,20 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
                   </Field>
                   <Field label="Assign To">
                     <select className={selectCls} value={fuForm.assigned_to} onChange={e => setFuForm(f => ({ ...f, assigned_to: e.target.value }))}>
-                      <option value="">Assign to me</option>
+                      <option value="">{fuEditId != null ? 'Unassigned' : 'Assign to me'}</option>
                       {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                     </select>
                   </Field>
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
+                    {fuEditId != null && (
+                      <button type="button" onClick={() => { setFuEditId(null); setFuForm({ due_date: '', description: '', assigned_to: '' }); }}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-600">
+                        Cancel
+                      </button>
+                    )}
                     <button type="submit" disabled={saving}
                       className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50">
-                      {saving ? 'Saving…' : 'Add Task'}
+                      {saving ? 'Saving…' : fuEditId != null ? 'Update Task' : 'Add Task'}
                     </button>
                   </div>
                 </form>

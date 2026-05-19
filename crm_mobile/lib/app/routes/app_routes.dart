@@ -20,6 +20,7 @@ abstract class AppRoutes {
   static const settings = '/settings';
   static const users = '/users';
   static const notifications = '/notifications';
+  static const reminders = '/reminders';
 
   /// Company admin persona
   static const adminHome = '/admin/home';

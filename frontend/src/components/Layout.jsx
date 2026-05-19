@@ -1,9 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { resolveApiPublicUrl } from '../utils/publicAssetUrl';
+import api from '../api/client.js';
+import { useToast } from '../context/ToastContext';
 import { useModules } from '../context/ModuleContext';
 import { useTheme } from '../context/ThemeContext';
+import { useWebPush } from '../hooks/useWebPush';
 
 const LAST_TENANT_SLUG_KEY = 'last_tenant_slug';
 
@@ -43,7 +46,7 @@ const NAV_SECTIONS = [
       { to: '/crm?tab=list', label: 'Leads', icon: '◎', module: 'crm' },
       { to: '/crm?tab=contacts', label: 'Contacts', icon: '✦', module: 'crm' },
       { to: '/crm?tab=pipeline', label: 'Pipeline', icon: '⧉', module: 'crm' },
-      { to: '/crm?tab=followups', label: 'Follow-ups', icon: '▤', module: 'crm' },
+      { to: '/reminders', label: 'Reminders', icon: '🔔', module: 'crm' },
       { to: '/crm/masters', label: 'Masters', icon: '◑', module: 'crm' },
     ],
   },
@@ -149,6 +152,212 @@ function displayRoleName(role) {
   return role === 'Super Admin' ? 'Admin' : role;
 }
 
+const _notifAudio = typeof window !== 'undefined' ? new Audio('/notification.wav') : null;
+
+function playNotificationChime() {
+  if (!_notifAudio) return;
+  _notifAudio.currentTime = 0;
+  _notifAudio.play().catch(() => {});
+}
+
+function requestOsNotifPermission() {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function showOsNotification(title, body) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  try {
+    new Notification(title, { body: body || '', icon: '/favicon.png', silent: false });
+  } catch {}
+}
+
+function timeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function NotificationBell() {
+  const navigate   = useNavigate();
+  const { show: showToast } = useToast();
+  const [open, setOpen]     = useState(false);
+  const [items, setItems]   = useState([]);
+  const [unread, setUnread] = useState(0);
+  const panelRef   = useRef(null);
+  // null = first load not done; Set = IDs already alerted so we don't re-toast
+  const seenRef    = useRef(null);
+
+  const markOne = useCallback(async (id) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      setItems(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+      setUnread(prev => Math.max(0, prev - 1));
+    } catch {}
+  }, []);
+
+  const applyList = useCallback((list, { alert = false } = {}) => {
+    setItems(list);
+    setUnread(list.filter(n => !n.is_read).length);
+
+    if (seenRef.current === null) {
+      // First load — snapshot current unread IDs so we don't toast them
+      seenRef.current = new Set(list.filter(n => !n.is_read).map(n => n.id));
+      return;
+    }
+    if (!alert) return;
+
+    // Toast + OS notification for newly arrived unread notifications
+    const newOnes = list.filter(n => !n.is_read && !seenRef.current.has(n.id));
+    if (newOnes.length > 0) playNotificationChime();
+    newOnes.forEach(n => {
+      seenRef.current.add(n.id);
+      showOsNotification(n.title || 'EzCRM', n.body || '');
+      showToast(
+        `🔔 ${n.title}${n.body ? ` — ${n.body}` : ''}`,
+        'info',
+        {
+          position: 'top-center',
+          durationMs: 10000,
+          actions: [
+            {
+              label: 'View',
+              variant: 'primary',
+              onClick: () => {
+                markOne(n.id);
+                if (n.link) navigate(n.link);
+                setOpen(true);
+              },
+            },
+          ],
+        },
+      );
+    });
+  }, [showToast, markOne, navigate]);
+
+  const loadItems = useCallback(async ({ alert = false } = {}) => {
+    try {
+      const r = await api.get('/notifications');
+      applyList(Array.isArray(r.data) ? r.data : [], { alert });
+    } catch {}
+  }, [applyList]);
+
+  // Request OS notification permission once
+  useEffect(() => { requestOsNotifPermission(); }, []);
+
+  // Initial load then poll every 30 s — alert on subsequent polls
+  useEffect(() => {
+    loadItems({ alert: false });
+    const id = setInterval(() => loadItems({ alert: true }), 10000);
+    return () => clearInterval(id);
+  }, [loadItems]);
+
+  // Refresh + mark all read when panel opens (resets badge here and on mobile via server)
+  useEffect(() => {
+    if (!open) return;
+    loadItems({ alert: false });
+    api.patch('/notifications/read-all')
+      .then(() => {
+        setItems(prev => prev.map(n => ({ ...n, is_read: true })));
+        setUnread(0);
+      })
+      .catch(() => {});
+  }, [open, loadItems]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const fn = (e) => { if (!panelRef.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [open]);
+
+  const markAllRead = async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      setItems(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnread(0);
+    } catch {}
+  };
+
+  const clearRead = async () => {
+    try {
+      await api.delete('/notifications/read');
+      setItems(prev => prev.filter(n => !n.is_read));
+    } catch {}
+  };
+
+  return (
+    <div className="relative shrink-0" ref={panelRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-label="Notifications"
+        className="relative h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700
+                   bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300
+                   hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        {unread > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 mt-2 w-80 rounded-xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-[#13152a] shadow-xl z-30 flex flex-col overflow-hidden"
+          style={{ maxHeight: '480px' }}
+        >
+          <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Notifications</span>
+            <div className="flex items-center gap-2 text-xs">
+              <button onClick={markAllRead} className="text-brand-600 dark:text-brand-400 hover:underline">Mark all read</button>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <button onClick={clearRead} className="text-slate-400 hover:text-red-500">Clear read</button>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto flex-1">
+            {items.length === 0 ? (
+              <p className="py-10 text-center text-sm text-slate-400 dark:text-slate-500">No notifications</p>
+            ) : items.map(n => (
+              <button
+                key={n.id}
+                type="button"
+                className={`w-full text-left px-4 py-3 flex gap-3 items-start border-b border-slate-50 dark:border-slate-800/40
+                            hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors
+                            ${!n.is_read ? 'bg-[#eeedfe]/60 dark:bg-[#2a2558]/30' : ''}`}
+                onClick={() => {
+                  markOne(n.id);
+                  if (n.link) navigate(n.link);
+                  setOpen(false);
+                }}
+              >
+                <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${!n.is_read ? 'bg-[#534ab7]' : 'bg-transparent'}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 leading-snug">{n.title}</p>
+                  {n.body && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{n.body}</p>}
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{timeAgo(n.created_at)}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Remount when [src] changes so a failed image does not stick after a new URL is saved. */
 function TopBarAvatar({ src, initial }) {
   const [failed, setFailed] = useState(false);
@@ -174,6 +383,7 @@ function TopBarAvatar({ src, initial }) {
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
+  useWebPush();
   const { canAccess } = useModules();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
@@ -183,6 +393,12 @@ export default function Layout({ children }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
+
+  // Scroll to top on route change — window scrolls, not <main>.
+  useLayoutEffect(() => {
+    if (pathRef.current === pathname) return;
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
   // Menu click / route change: top bar (BrowserRouter has no useNavigation; pathname is the signal).
   useLayoutEffect(() => {
@@ -371,6 +587,7 @@ export default function Layout({ children }) {
           >
             {dark ? '☀️' : '🌙'}
           </button>
+          <NotificationBell />
           <div className="hidden sm:flex items-center gap-2">
             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${roleCls}`}>{roleLabel}</span>
             <div className="relative" ref={userMenuRef}>

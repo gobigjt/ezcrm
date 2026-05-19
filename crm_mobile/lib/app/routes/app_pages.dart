@@ -16,6 +16,8 @@ import '../modules/hr/hr_controller.dart';
 import '../modules/hr/hr_view.dart';
 import '../modules/notifications/notifications_controller.dart';
 import '../modules/notifications/notifications_view.dart';
+import '../modules/reminders/reminders_controller.dart';
+import '../modules/reminders/reminders_view.dart';
 import '../modules/settings/settings_controller.dart';
 import '../modules/settings/settings_view.dart';
 import '../modules/users/users_controller.dart';
@@ -216,6 +218,14 @@ abstract class AppPages {
         Get.lazyPut<NotificationsController>(() => NotificationsController());
       }),
       middlewares: [PermissionMiddleware(permission: AppPermissions.dashboard)],
+    ),
+    GetPage(
+      name: AppRoutes.reminders,
+      page: () => const RemindersView(),
+      binding: BindingsBuilder(() {
+        Get.lazyPut<RemindersController>(() => RemindersController());
+      }),
+      middlewares: [PermissionMiddleware(permission: AppPermissions.crm)],
     ),
     GetPage(
       name: AppRoutes.adminHome,

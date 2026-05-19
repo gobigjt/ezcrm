@@ -70,6 +70,23 @@ export class FcmPushService {
         body: payload.body || '',
       },
       data: payload.data || {},
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'ezcrm_push',
+          priority: 'high',
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1,
+          },
+        },
+      },
     };
 
     const res = await admin.messaging().sendEachForMulticast(msg);

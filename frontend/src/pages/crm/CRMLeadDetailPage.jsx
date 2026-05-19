@@ -56,7 +56,6 @@ export default function CRMLeadDetailPage() {
   const [actForm, setActForm] = useState({ type: 'note', description: '' });
   const [fuForm, setFuForm] = useState({ due_date: '', description: '', assigned_to: '' });
   const [fuEditId, setFuEditId] = useState(null);
-  const [fuEditForm, setFuEditForm] = useState({ due_date: '', description: '', assigned_to: '' });
   const [saving, setSaving] = useState(false);
   const [converting, setConverting] = useState(false);
   const canManageTasks = canManageCrmFollowupTasks(user?.role);
@@ -103,19 +102,29 @@ export default function CRMLeadDetailPage() {
     }
   };
 
-  const addFollowup = async (e) => {
+  const submitFollowup = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/crm/leads/${id}/followups`, {
-        ...fuForm,
-        due_date: datetimeLocalInputToApiIso(fuForm.due_date),
-      });
+      if (fuEditId != null) {
+        await api.patch(`/crm/leads/${id}/followups/${fuEditId}`, {
+          due_date: datetimeLocalInputToApiIso(fuForm.due_date),
+          description: fuForm.description,
+          assigned_to: fuForm.assigned_to === '' ? null : Number(fuForm.assigned_to),
+        });
+        showToast('Task updated', 'success');
+      } else {
+        await api.post(`/crm/leads/${id}/followups`, {
+          ...fuForm,
+          due_date: datetimeLocalInputToApiIso(fuForm.due_date),
+        });
+        showToast('Task created successfully');
+      }
       setFuForm({ due_date: '', description: '', assigned_to: '' });
+      setFuEditId(null);
       load();
-      showToast('Task created successfully');
     } catch (err) {
-      showToast(apiErrorMessage(err, 'Could not create task'), 'error');
+      showToast(apiErrorMessage(err, fuEditId != null ? 'Could not update task' : 'Could not create task'), 'error');
     } finally {
       setSaving(false);
     }
@@ -128,32 +137,20 @@ export default function CRMLeadDetailPage() {
 
   const openFuEdit = (f) => {
     setFuEditId(f.id);
-    setFuEditForm({
+    setFuForm({
       due_date: toDatetimeLocalValue(f.due_date),
       description: f.description || '',
       assigned_to: f.assigned_to != null && f.assigned_to !== '' ? String(f.assigned_to) : '',
     });
   };
 
-  const saveFollowupEdit = async (e) => {
-    e.preventDefault();
+  useEffect(() => {
     if (fuEditId == null) return;
-    setSaving(true);
-    try {
-      await api.patch(`/crm/leads/${id}/followups/${fuEditId}`, {
-        due_date: datetimeLocalInputToApiIso(fuEditForm.due_date),
-        description: fuEditForm.description,
-        assigned_to: fuEditForm.assigned_to === '' ? null : Number(fuEditForm.assigned_to),
-      });
-      setFuEditId(null);
-      load();
-      showToast('Task updated', 'success');
-    } catch (err) {
-      showToast(apiErrorMessage(err, 'Could not update task'), 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
+    const main = document.querySelector('main');
+    if (main) main.scrollTo({ top: 0, behavior: 'smooth' });
+    const t = setTimeout(() => document.getElementById('fu-date')?.focus(), 350);
+    return () => clearTimeout(t);
+  }, [fuEditId]);
 
   const deleteFollowup = (fid) => {
     promptDestructive(showToast, {
@@ -162,7 +159,7 @@ export default function CRMLeadDetailPage() {
         setSaving(true);
         try {
           await api.delete(`/crm/leads/${id}/followups/${fid}`);
-          if (fuEditId === fid) setFuEditId(null);
+          if (fuEditId === fid) { setFuEditId(null); setFuForm({ due_date: '', description: '', assigned_to: '' }); }
           load();
           showToast('Task deleted');
         } finally {
@@ -286,6 +283,14 @@ export default function CRMLeadDetailPage() {
               </button>
             ))}
           </div>
+          {lead?.created_at && (
+            <div className="flex items-center gap-2 mt-3">
+              <span className="text-xs text-slate-400 dark:text-slate-500">📅 Created</span>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
+                {formatDate(lead.created_at)}
+              </span>
+            </div>
+          )}
         </div>
 
         {whatsappUrl && (
@@ -321,35 +326,26 @@ export default function CRMLeadDetailPage() {
               Only admins and sales managers can add, edit, or delete tasks. You can still mark tasks done.
             </p>
           )}
-          {canManageTasks && fuEditId != null && (
-            <form onSubmit={saveFollowupEdit} className="space-y-2 mb-3 p-3 rounded-lg border border-amber-200/70 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-900/10">
-              <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">Edit task</p>
-              <input type="datetime-local" className={inputCls} value={fuEditForm.due_date} onChange={(e) => setFuEditForm((f) => ({ ...f, due_date: e.target.value }))} required />
-              <input className={inputCls} value={fuEditForm.description} onChange={(e) => setFuEditForm((f) => ({ ...f, description: e.target.value }))} placeholder="Description" />
-              <select className={selectCls} value={fuEditForm.assigned_to} onChange={(e) => setFuEditForm((f) => ({ ...f, assigned_to: e.target.value }))}>
-                <option value="">Unassigned</option>
+          {canManageTasks && (
+            <form onSubmit={submitFollowup} className={`space-y-2 mb-3 rounded-xl p-3 transition-all duration-200 ${fuEditId != null ? 'bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-400 dark:border-amber-500 ring-2 ring-amber-300/50 dark:ring-amber-600/40' : ''}`}>
+              {fuEditId != null && <p className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">✏ Editing follow-up — update below</p>}
+              <input id="fu-date" type="datetime-local" className={inputCls} value={fuForm.due_date} onChange={(e) => setFuForm((f) => ({ ...f, due_date: e.target.value }))} required />
+              <input className={inputCls} value={fuForm.description} onChange={(e) => setFuForm((f) => ({ ...f, description: e.target.value }))} placeholder="Description" />
+              <select className={selectCls} value={fuForm.assigned_to} onChange={(e) => setFuForm((f) => ({ ...f, assigned_to: e.target.value }))}>
+                <option value="">{fuEditId != null ? 'Unassigned' : 'Assign to me'}</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
               <div className="flex gap-2">
-                <button type="button" className="btn-wf-secondary" onClick={() => setFuEditId(null)}>Cancel</button>
-                <button className="btn-wf-primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+                {fuEditId != null && (
+                  <button type="button" className="btn-wf-secondary" onClick={() => { setFuEditId(null); setFuForm({ due_date: '', description: '', assigned_to: '' }); }}>Cancel</button>
+                )}
+                <button className="btn-wf-primary" disabled={saving}>{saving ? 'Saving…' : fuEditId != null ? 'Update Follow-up' : 'Add Follow-up'}</button>
               </div>
-            </form>
-          )}
-          {canManageTasks && (
-            <form onSubmit={addFollowup} className="space-y-2 mb-3">
-              <input type="datetime-local" className={inputCls} value={fuForm.due_date} onChange={(e) => setFuForm((f) => ({ ...f, due_date: e.target.value }))} required />
-              <input className={inputCls} value={fuForm.description} onChange={(e) => setFuForm((f) => ({ ...f, description: e.target.value }))} placeholder="Description" />
-              <select className={selectCls} value={fuForm.assigned_to} onChange={(e) => setFuForm((f) => ({ ...f, assigned_to: e.target.value }))}>
-                <option value="">Assign to me</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-              <button className="btn-wf-primary" disabled={saving}>{saving ? 'Saving…' : 'Add Follow-up'}</button>
             </form>
           )}
           <div className="space-y-2">
             {followups.map((f) => (
-              <div key={f.id} className="flex items-center justify-between gap-2 text-sm border rounded-lg border-slate-200 dark:border-slate-700 p-2">
+              <div key={f.id} className={`flex items-center justify-between gap-2 text-sm border rounded-lg p-2 ${fuEditId === f.id ? 'border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-slate-200 dark:border-slate-700'}`}>
                 <div className="min-w-0 flex-1">
                   <div>{f.description || 'Follow up'}</div>
                   <div className="text-xs text-slate-500">{formatDate(f.due_date)}</div>
@@ -367,9 +363,11 @@ export default function CRMLeadDetailPage() {
             ))}
             {followups.length === 0 && <p className="text-sm text-slate-500">No follow-ups</p>}
           </div>
+
         </div>
       </div>
     </div>
+
   );
 }
 

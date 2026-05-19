@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
@@ -12,6 +13,8 @@ import '../../core/network/error_utils.dart';
 import '../../core/auth/role_permissions.dart';
 import '../../core/storage/secure_storage_service.dart';
 import '../../core/utils/ui_format.dart';
+import '../../core/utils/notification_sound.dart';
+import '../../core/utils/os_notification.dart';
 import '../../core/auth/role_home_route.dart';
 import '../../routes/app_routes.dart';
 import '../attendance/sales_attendance_controller.dart';
@@ -28,6 +31,12 @@ class AuthController extends GetxController {
   final SecureStorageService _storage = SecureStorageService();
   Future<void>? _tokenRefreshInFlight;
   StreamSubscription<String>? _fcmTokenSub;
+  StreamSubscription<RemoteMessage>? _fcmForegroundSub;
+  Timer? _notifPollTimer;
+  final Set<int> _seenNotifIds = {};
+  bool _notifFirstLoad = true;
+
+  final unreadNotifCount = 0.obs;
 
   final email = ''.obs;
   final password = ''.obs;
@@ -262,6 +271,7 @@ class AuthController extends GetxController {
     await _registerPushTokenSafe(access);
     isLoggedIn.value = true;
     await refreshSalesExecutiveAttendance();
+    _startNotifPolling();
   }
 
   /// Loads today’s attendance for Sales Executive (any home route, not only dashboard).
@@ -381,6 +391,7 @@ class AuthController extends GetxController {
   }
 
   Future<void> _clearLocalSession() async {
+    _stopNotifPolling();
     isLoggedIn.value = false;
     password.value = '';
     role.value = '';
@@ -410,6 +421,83 @@ class AuthController extends GetxController {
       default:
         return 'unknown';
     }
+  }
+
+  void _startNotifPolling() {
+    _notifPollTimer?.cancel();
+    _fcmForegroundSub?.cancel();
+    _notifFirstLoad = true;
+    _seenNotifIds.clear();
+    requestOsNotificationPermission();
+    // Show OS notification immediately when a push arrives in the foreground
+    try {
+      _fcmForegroundSub = FirebaseMessaging.onMessage.listen((msg) {
+        final title = msg.notification?.title ?? msg.data['title']?.toString() ?? '';
+        final body  = msg.notification?.body  ?? msg.data['body']?.toString()  ?? '';
+        if (title.isNotEmpty) showOsNotification(title, body);
+        _pollNotifications();
+      });
+    } catch (_) {}
+    _notifPollTimer = Timer.periodic(const Duration(seconds: 30), (_) => _pollNotifications());
+    _pollNotifications();
+  }
+
+  void _stopNotifPolling() {
+    unreadNotifCount.value = 0;
+    _notifPollTimer?.cancel();
+    _notifPollTimer = null;
+    _fcmForegroundSub?.cancel();
+    _fcmForegroundSub = null;
+    _seenNotifIds.clear();
+    _notifFirstLoad = true;
+  }
+
+  Future<void> _pollNotifications() async {
+    if (accessToken.value.isEmpty) return;
+    try {
+      final res = await authorizedRequest(method: 'GET', path: '/notifications?limit=30');
+      final all = (res as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      final unread = all.where((e) => e['is_read'] != true).toList();
+      unreadNotifCount.value = unread.length;
+      if (_notifFirstLoad) {
+        _notifFirstLoad = false;
+        for (final n in unread) {
+          final id = parseDynamicInt(n['id']);
+          if (id > 0) _seenNotifIds.add(id);
+        }
+        return;
+      }
+      final newOnes = unread.where((n) {
+        final id = parseDynamicInt(n['id']);
+        return id > 0 && !_seenNotifIds.contains(id);
+      }).toList();
+      if (newOnes.isEmpty) return;
+      playNotificationSound();
+      for (final n in newOnes) {
+        final id = parseDynamicInt(n['id']);
+        _seenNotifIds.add(id);
+        final title = (n['title'] ?? 'Reminder').toString();
+        final body  = (n['body'] ?? '').toString();
+        showOsNotification(title, body);
+        final link  = n['link']?.toString();
+        Get.snackbar(
+          title,
+          body,
+          duration: const Duration(seconds: 8),
+          snackPosition: SnackPosition.TOP,
+          icon: const Icon(Icons.notifications_active_rounded, color: Colors.white),
+          backgroundColor: const Color(0xFF1565C0),
+          colorText: Colors.white,
+          onTap: (_) {
+            if (link != null && link.isNotEmpty) {
+              Get.toNamed(link);
+            }
+          },
+        );
+      }
+    } catch (_) {}
   }
 
   void _initFcmTokenSync() {
