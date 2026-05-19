@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/models/crm_models.dart';
-import '../../core/utils/ui_format.dart' show toYmd;
+import '../../core/utils/ui_format.dart' show toYmd, formatSalesCardDate, pickDateIntoController, pickDateTimeIntoController;
 import '../../shared/widgets/app_error_banner.dart';
 import '../../shared/widgets/app_navigation_drawer.dart';
 import '../../routes/app_routes.dart';
@@ -14,6 +14,79 @@ import 'crm_controller.dart';
 import 'crm_edit_lead_view.dart';
 import 'crm_lead_detail_view.dart';
 import 'crm_quote_nav.dart';
+
+Future<void> _openQuickFollowup(
+  BuildContext context,
+  CrmController controller,
+  int leadId,
+) async {
+  final now = DateTime.now();
+  final hh = now.hour.toString().padLeft(2, '0');
+  final mm = now.minute.toString().padLeft(2, '0');
+  final dateCtrl = TextEditingController(
+    text: '${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}T$hh:$mm',
+  );
+  final descCtrl = TextEditingController();
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Set Follow-up',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: dateCtrl,
+            readOnly: true,
+            onTap: () => pickDateTimeIntoController(context: context, controller: dateCtrl),
+            decoration: const InputDecoration(
+              labelText: 'Due Date & Time',
+              suffixIcon: Icon(Icons.calendar_today_rounded),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: descCtrl,
+            decoration: const InputDecoration(labelText: 'Description (optional)'),
+            minLines: 2,
+            maxLines: 4,
+          ),
+          const SizedBox(height: 16),
+          Obx(
+            () => FilledButton(
+              onPressed: controller.isSubmitting.value
+                  ? null
+                  : () async {
+                      if (dateCtrl.text.trim().isEmpty) return;
+                      await controller.addFollowup(
+                        leadId: leadId,
+                        dueDate: dateCtrl.text.trim(),
+                        description: descCtrl.text.trim(),
+                      );
+                      if (context.mounted) Navigator.of(context).pop();
+                    },
+              child: const Text('Save Follow-up'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 class CrmView extends GetView<CrmController> {
   const CrmView({super.key});
@@ -28,15 +101,15 @@ class CrmView extends GetView<CrmController> {
       appBar: AppBar(
         backgroundColor: _leadsAppBarBg,
         foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actionsIconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white, size: 18),
+        actionsIconTheme: const IconThemeData(color: Colors.white, size: 18),
         title: Obx(
           () => Text(
             'Leads (${controller.leads.length})',
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w600,
-              fontSize: 18,
+              fontSize: 15,
             ),
           ),
         ),
@@ -342,6 +415,7 @@ class CrmView extends GetView<CrmController> {
                         await controller.applyFilters();
                       },
                       onAfterEdit: () => controller.applyFilters(),
+                      onSetFollowup: () => _openQuickFollowup(context, controller, lead.id),
                     );
                   },
                 ),
@@ -360,11 +434,13 @@ class _LeadCard extends StatelessWidget {
     required this.lead,
     required this.onTap,
     required this.onAfterEdit,
+    required this.onSetFollowup,
   });
 
   final CrmLead lead;
   final VoidCallback onTap;
   final VoidCallback onAfterEdit;
+  final VoidCallback onSetFollowup;
 
   @override
   Widget build(BuildContext context) {
@@ -377,72 +453,88 @@ class _LeadCard extends StatelessWidget {
             ? (parts.first.length >= 2 ? parts.first.substring(0, 2) : parts.first.substring(0, 1))
             : (parts[0][0] + parts[1][0])).toUpperCase();
     final hues = [0xFF5C6BC0, 0xFF26A69A, 0xFFEC407A, 0xFFAB47BC, 0xFFFF7043];
-    final bg = Color(hues[lead.id.abs() % hues.length]);
+    final avatarBg = Color(hues[lead.id.abs() % hues.length]);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final dateText = formatSalesCardDate(lead.createdAt.toIso8601String());
+    final chipBg = isDark ? const Color(0xFF0D1F2D) : const Color(0xFFE3F2FD);
+    final chipFg = isDark ? const Color(0xFF93C5FD) : const Color(0xFF0C447C);
 
     return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: isDark
+              ? const Color(0xFF2A3142)
+              : const Color(0xFFE2E8F0),
+        ),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 11, 8, 11),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Avatar
                   CircleAvatar(
-                    radius: 20,
-                    backgroundColor: bg,
+                    radius: 19,
+                    backgroundColor: avatarBg,
                     child: Text(
                       initials,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                   ),
                   const SizedBox(width: 10),
+                  // Name + sub + date chip
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           display,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         if (sub.isNotEmpty && sub != display) ...[
                           const SizedBox(height: 2),
                           Text(
                             sub,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
-                          ),
-                        ],
-                        if (lead.productCategory.trim().isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            'Category: ${lead.productCategory.trim()}',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   color: Theme.of(context).hintColor,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
                                 ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                         const SizedBox(height: 6),
-                        InkWell(
-                          onTap: onTap,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.notifications_active_outlined, size: 15, color: Colors.teal.shade700),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Set follow-up',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.teal.shade700),
-                              ),
-                            ],
+                        // Date chip
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: chipBg,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            dateText,
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: chipFg),
                           ),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  // Stage + priority + score + menu
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -467,65 +559,44 @@ class _LeadCard extends StatelessWidget {
                             itemBuilder: (ctx) => [
                               PopupMenuItem(
                                 value: 'detail',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.open_in_new_rounded, size: 20, color: Theme.of(ctx).colorScheme.onSurface),
-                                    const SizedBox(width: 10),
-                                    const Text('View details'),
-                                  ],
-                                ),
+                                child: Row(children: [Icon(Icons.open_in_new_rounded, size: 20, color: Theme.of(ctx).colorScheme.onSurface), const SizedBox(width: 10), const Text('View details')]),
                               ),
                               PopupMenuItem(
                                 value: 'edit',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.edit_outlined, size: 20, color: Theme.of(ctx).colorScheme.onSurface),
-                                    const SizedBox(width: 10),
-                                    const Text('Edit lead'),
-                                  ],
-                                ),
+                                child: Row(children: [Icon(Icons.edit_outlined, size: 20, color: Theme.of(ctx).colorScheme.onSurface), const SizedBox(width: 10), const Text('Edit lead')]),
                               ),
                               PopupMenuItem(
                                 value: 'sales',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.shopping_bag_outlined, size: 20, color: Theme.of(ctx).colorScheme.onSurface),
-                                    const SizedBox(width: 10),
-                                    const Text('Sales…'),
-                                  ],
-                                ),
+                                child: Row(children: [Icon(Icons.shopping_bag_outlined, size: 20, color: Theme.of(ctx).colorScheme.onSurface), const SizedBox(width: 10), const Text('Sales…')]),
                               ),
                             ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 5),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            width: 8,
-                            height: 8,
+                            width: 7,
+                            height: 7,
                             decoration: BoxDecoration(
                               color: _priorityDotColor(lead.priority),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            _priorityShort(lead.priority),
-                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(width: 8),
+                          Text(_priorityShort(lead.priority), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                          const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
                               lead.leadScore.toStringAsFixed(1),
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
                             ),
                           ),
                         ],
@@ -534,19 +605,56 @@ class _LeadCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 9),
+              // Bottom row: Set follow-up button + assigned name
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Flexible(
-                    child: Text(
-                      lead.assignedName.isNotEmpty ? lead.assignedName : lead.source,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                  GestureDetector(
+                    onTap: onSetFollowup,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1A2C3A) : const Color(0xFFEAF4FF),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF1E3F5A) : const Color(0xFFBBD8F0),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_alarm_rounded, size: 12, color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF1565C0)),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Set follow-up',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF1565C0),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.person_outline_rounded, size: 15, color: Colors.blueGrey.shade400),
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            lead.assignedName.isNotEmpty ? lead.assignedName : lead.source,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Icon(Icons.person_outline_rounded, size: 14, color: Colors.blueGrey.shade400),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ],

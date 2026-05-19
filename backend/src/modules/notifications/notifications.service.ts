@@ -1,12 +1,14 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FcmPushService } from './fcm-push.service';
+import { WebPushService } from './web-push.service';
 
 @Injectable()
 export class NotificationsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly fcmPush: FcmPushService,
+    private readonly webPush: WebPushService,
   ) {}
 
   private isSuperAdmin(role?: unknown): boolean {
@@ -194,27 +196,49 @@ export class NotificationsService {
         WHERE user_id = $1
           AND ($2::integer = 0 OR tenant_id = $2)
           AND is_active = TRUE`,
-      [data.userId, data.tenantId ?? null],
+      [data.userId, data.tenantId ?? 0],
     );
     const tokens = tokensRes.rows.map((r) => String(r.token || '').trim()).filter(Boolean);
     if (!tokens.length) return { ok: true, sent: 0, failed: 0 };
 
-    const result = await this.fcmPush.sendToTokens(tokens, {
-      title: data.title,
-      body: data.body,
-      data: data.payload || {},
-    });
+    const webTokens = tokens.filter(t => this.webPush.isWebSubscription(t));
+    const fcmTokens = tokens.filter(t => !this.webPush.isWebSubscription(t));
 
-    if (result.invalidTokens.length) {
+    let totalSent = 0, totalFailed = 0;
+    const invalidTokens: string[] = [];
+
+    if (fcmTokens.length) {
+      const r = await this.fcmPush.sendToTokens(fcmTokens, {
+        title: data.title,
+        body: data.body,
+        data: data.payload || {},
+      });
+      totalSent += r.sent;
+      totalFailed += r.failed;
+      invalidTokens.push(...r.invalidTokens);
+    }
+
+    for (const sub of webTokens) {
+      const r = await this.webPush.sendToSubscription(sub, {
+        title: data.title,
+        body: data.body,
+        data: data.payload,
+      });
+      totalSent += r.sent;
+      totalFailed += r.failed;
+      if (r.invalid) invalidTokens.push(sub);
+    }
+
+    if (invalidTokens.length) {
       await this.db.query(
         `UPDATE notification_push_tokens
             SET is_active = FALSE, updated_at = NOW()
           WHERE token = ANY($1::text[])`,
-        [result.invalidTokens],
+        [invalidTokens],
       );
     }
 
-    return { ok: true, sent: result.sent, failed: result.failed };
+    return { ok: true, sent: totalSent, failed: totalFailed };
   }
 
   async testPush(input: {

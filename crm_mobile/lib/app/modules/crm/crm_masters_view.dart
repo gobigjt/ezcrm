@@ -43,9 +43,9 @@ class _CrmMastersViewState extends State<CrmMastersView> with SingleTickerProvid
             style: TextStyle(
               color: isDark ? cs.onSurface : Colors.white,
               fontWeight: FontWeight.w700,
-              fontSize: 18,
+              fontSize: 15,
             )),
-        iconTheme: IconThemeData(color: isDark ? cs.onSurface : Colors.white),
+        iconTheme: IconThemeData(color: isDark ? cs.onSurface : Colors.white, size: 18),
         bottom: TabBar(
           controller: _tabs,
           labelColor: isDark ? cs.primary : Colors.white,

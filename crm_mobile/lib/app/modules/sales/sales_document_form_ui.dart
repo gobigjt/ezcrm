@@ -531,9 +531,9 @@ PreferredSizeWidget salesDocAppBar(
     surfaceTintColor: Colors.transparent,
     elevation: 0,
     scrolledUnderElevation: 0,
-    iconTheme: IconThemeData(color: barInk),
-    actionsIconTheme: IconThemeData(color: barInk),
-    titleTextStyle: TextStyle(color: barInk, fontSize: 18, fontWeight: FontWeight.w600),
+    iconTheme: IconThemeData(color: barInk, size: 18),
+    actionsIconTheme: IconThemeData(color: barInk, size: 18),
+    titleTextStyle: TextStyle(color: barInk, fontSize: 15, fontWeight: FontWeight.w600),
     leading: IconButton(
       onPressed: () => Get.back(),
       icon: const Icon(Icons.arrow_back_rounded),

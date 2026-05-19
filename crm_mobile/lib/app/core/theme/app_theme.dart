@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 abstract class AppTheme {
-  /// Stronger body / title contrast (WCAG-friendly on surfaces).
   static TextTheme _textThemeFor(ColorScheme scheme, ThemeData base) {
-    return base.textTheme.apply(
+    return GoogleFonts.poppinsTextTheme(base.textTheme).apply(
       bodyColor: scheme.onSurface,
       displayColor: scheme.onSurface,
     );
@@ -35,6 +35,13 @@ abstract class AppTheme {
         foregroundColor: scheme.onSurface,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
+        titleTextStyle: GoogleFonts.poppins(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
+        iconTheme: IconThemeData(size: 18, color: scheme.onSurface),
+        actionsIconTheme: IconThemeData(size: 18, color: scheme.onSurface),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -114,6 +121,13 @@ abstract class AppTheme {
         foregroundColor: scheme.onSurface,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
+        titleTextStyle: GoogleFonts.poppins(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
+        iconTheme: IconThemeData(size: 18, color: scheme.onSurface),
+        actionsIconTheme: IconThemeData(size: 18, color: scheme.onSurface),
       ),
       cardTheme: CardThemeData(
         elevation: 0,

@@ -5,7 +5,7 @@ import '../../core/auth/role_permissions.dart';
 import '../../core/models/crm_models.dart';
 import '../../core/network/error_utils.dart';
 import '../../core/utils/ui_format.dart'
-    show formatCurrencyInr, formatIsoDate, parseLocalCalendarDay, pickDateIntoController;
+    show formatCurrencyInr, formatIsoDate, formatIsoDateTime, parseLocalCalendarDay, pickDateIntoController, pickDateTimeIntoController;
 import '../auth/auth_controller.dart';
 import '../../shared/widgets/app_error_banner.dart';
 import '../../showcase/showcase_widgets.dart';
@@ -30,8 +30,17 @@ Future<void> _openEditFollowupSheet(
   CrmLeadDetailController controller,
   CrmFollowupRow f,
 ) async {
-  final ymd = formatIsoDate(f.dueDate);
-  final dateCtrl = TextEditingController(text: ymd == '—' ? '' : ymd);
+  final existingDt = f.dueDate != null ? DateTime.tryParse(f.dueDate.toString()) : null;
+  final initDt = existingDt != null ? (existingDt.isUtc ? existingDt.toLocal() : existingDt) : null;
+  String initText = '';
+  if (initDt != null) {
+    final hh = initDt.hour.toString().padLeft(2, '0');
+    final mm = initDt.minute.toString().padLeft(2, '0');
+    final mo = initDt.month.toString().padLeft(2, '0');
+    final dd = initDt.day.toString().padLeft(2, '0');
+    initText = '${initDt.year}-$mo-${dd}T$hh:$mm';
+  }
+  final dateCtrl = TextEditingController(text: initText);
   final descCtrl = TextEditingController(text: f.description);
   await showModalBottomSheet<void>(
     context: context,
@@ -49,9 +58,9 @@ Future<void> _openEditFollowupSheet(
           TextField(
             controller: dateCtrl,
             readOnly: true,
-            onTap: () => pickDateIntoController(context: context, controller: dateCtrl),
+            onTap: () => pickDateTimeIntoController(context: context, controller: dateCtrl),
             decoration: const InputDecoration(
-              labelText: 'Due Date',
+              labelText: 'Due Date & Time',
               suffixIcon: Icon(Icons.calendar_today_rounded),
             ),
           ),
@@ -383,6 +392,32 @@ class CrmLeadDetailView extends StatelessWidget {
                               }).toList(),
                             ),
                           ),
+                          const SizedBox(height: 10),
+                          // Created date row — matches _DetailIconRow value style
+                          Row(
+                            children: [
+                              Icon(Icons.calendar_today_outlined, size: 20, color: Theme.of(context).colorScheme.primary),
+                              const SizedBox(width: 10),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Created',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    formatIsoDateTime(lead.createdAt.toIso8601String()),
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 8),
                           _DetailIconRow(icon: Icons.sell_outlined, label: 'Lead source', value: lead.source),
                           _DetailIconRow(
@@ -636,7 +671,12 @@ class CrmLeadDetailView extends StatelessWidget {
   }
 
   Future<void> _openAddFollowup(BuildContext context, CrmLeadDetailController controller) async {
-    final dateCtrl = TextEditingController(text: DateTime.now().toIso8601String().split('T').first);
+    final now = DateTime.now();
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final mo = now.month.toString().padLeft(2, '0');
+    final dd = now.day.toString().padLeft(2, '0');
+    final dateCtrl = TextEditingController(text: '${now.year}-$mo-${dd}T$hh:$mm');
     final descCtrl = TextEditingController();
     await showModalBottomSheet<void>(
       context: context,
@@ -654,9 +694,9 @@ class CrmLeadDetailView extends StatelessWidget {
             TextField(
               controller: dateCtrl,
               readOnly: true,
-              onTap: () => pickDateIntoController(context: context, controller: dateCtrl),
+              onTap: () => pickDateTimeIntoController(context: context, controller: dateCtrl),
               decoration: const InputDecoration(
-                labelText: 'Due Date',
+                labelText: 'Due Date & Time',
                 suffixIcon: Icon(Icons.calendar_today_rounded),
               ),
             ),
@@ -783,118 +823,179 @@ class _FollowupsSliver extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final open = controller.followups.where((f) => !f.isDone).toList();
-      if (open.isEmpty) {
+      final all = controller.followups.toList();
+      if (all.isEmpty) {
         return SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text('No open follow-ups', style: TextStyle(color: Theme.of(context).hintColor)),
+            child: Text('No follow-ups', style: TextStyle(color: Theme.of(context).hintColor)),
           ),
         );
       }
 
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final cs = Theme.of(context).colorScheme;
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final weekEnd = today.add(const Duration(days: 7));
 
+      final open = all.where((f) => !f.isDone).toList();
+      final done = all.where((f) => f.isDone).toList();
+
       final overdue = open.where((f) => (parseLocalCalendarDay(f.dueDate)?.isBefore(today) ?? false)).toList()
         ..sort((a, b) => (parseLocalCalendarDay(a.dueDate) ?? today).compareTo(parseLocalCalendarDay(b.dueDate) ?? today));
-
       final todayItems = open.where((f) {
         final d = parseLocalCalendarDay(f.dueDate);
         return d != null && d.year == today.year && d.month == today.month && d.day == today.day;
       }).toList();
-
       final thisWeek = open.where((f) {
         final d = parseLocalCalendarDay(f.dueDate);
         if (d == null) return false;
-        final isAfterToday = d.isAfter(today);
-        final within = d.isBefore(weekEnd.add(const Duration(days: 1))) || d.isAtSameMomentAs(weekEnd);
-        return isAfterToday && within;
+        return d.isAfter(today) && (d.isBefore(weekEnd.add(const Duration(days: 1))) || d.isAtSameMomentAs(weekEnd));
       }).toList();
 
       final children = <Widget>[];
 
-      void addSection(String title, int count, Color dotColor, List<CrmFollowupRow> rows) {
-        if (rows.isEmpty) return;
-        children.add(
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-            child: Text(
-              '$title ($count)',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: dotColor),
+      Widget buildCard(CrmFollowupRow f, {bool isOverdue = false}) {
+        final isDone = f.isDone;
+
+        // Card colours
+        Color cardBg;
+        Color cardBorder;
+        if (isDone) {
+          cardBg     = isDark ? cs.surfaceContainerLow.withValues(alpha: 0.5) : const Color(0xFFF5F5F5);
+          cardBorder = isDark ? cs.outlineVariant.withValues(alpha: 0.3) : const Color(0xFFE0E0E0);
+        } else if (isOverdue) {
+          cardBg     = isDark ? const Color(0xFF2D1515) : const Color(0xFFFFF0F0);
+          cardBorder = isDark ? const Color(0xFF5C2020) : const Color(0xFFFFCDD2);
+        } else {
+          cardBg     = Theme.of(context).cardColor;
+          cardBorder = isDark ? cs.outlineVariant.withValues(alpha: 0.3) : const Color(0xFFE8EDF2);
+        }
+
+        // Checkbox circle
+        final checkColor = isDone
+            ? const Color(0xFF4CAF50)
+            : (isOverdue
+                ? const Color(0xFFE24B4A)
+                : (isDark ? Colors.white38 : Colors.grey.shade400));
+
+        final checkWidget = GestureDetector(
+          onTap: isDone || controller.isSubmitting.value
+              ? null
+              : () => controller.markFollowupDone(f.id),
+          child: Container(
+            width: 20,
+            height: 20,
+            margin: const EdgeInsets.only(top: 2, right: 10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isDone ? const Color(0xFF4CAF50) : Colors.transparent,
+              border: Border.all(color: checkColor, width: 2),
             ),
+            child: isDone
+                ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                : null,
           ),
         );
-        for (final f in rows) {
-          children.add(
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: Material(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(
+
+        // Description text
+        final descStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: isDone ? Theme.of(context).hintColor : null,
+          decoration: isDone ? TextDecoration.lineThrough : null,
+          decorationColor: Theme.of(context).hintColor,
+        );
+
+        // Date text
+        final dateText = 'Due ${formatIsoDateTime(f.dueDate)}';
+        final dateStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: isOverdue
+              ? const Color(0xFFE24B4A)
+              : Theme.of(context).hintColor,
+          fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
+        );
+
+        // Edit locked when done OR when exact due datetime has already passed
+        final rawDt = f.dueDate != null ? DateTime.tryParse(f.dueDate.toString()) : null;
+        final duePassed = rawDt != null && (rawDt.isUtc ? rawDt.toLocal() : rawDt).isBefore(DateTime.now());
+        final canEdit = canManageTasks && !isDone && !duePassed;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Container(
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cardBorder, width: 1),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                checkWidget,
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        margin: const EdgeInsets.only(top: 6, right: 10),
-                        decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              f.description,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Due ${formatIsoDate(f.dueDate)}',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: controller.isSubmitting.value ? null : () => controller.markFollowupDone(f.id),
-                            child: const Text('Done'),
-                          ),
-                          if (canManageTasks && !f.isDone)
-                            TextButton(
-                              onPressed: controller.isSubmitting.value
-                                  ? null
-                                  : () => _openEditFollowupSheet(context, controller, f),
-                              child: const Text('Edit'),
-                            ),
-                          if (canManageTasks)
-                            TextButton(
-                              onPressed: controller.isSubmitting.value
-                                  ? null
-                                  : () => _confirmDeleteFollowupSheet(context, controller, f),
-                              child: Text('Delete', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                            ),
-                        ],
-                      ),
+                      Text(f.description.isEmpty ? 'Follow up' : f.description, style: descStyle),
+                      const SizedBox(height: 2),
+                      Text(dateText, style: dateStyle),
                     ],
                   ),
                 ),
-              ),
+                if (!isDone)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (canEdit)
+                        GestureDetector(
+                          onTap: controller.isSubmitting.value
+                              ? null
+                              : () => _openEditFollowupSheet(context, controller, f),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                            child: Text('Edit',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.primary)),
+                          ),
+                        ),
+                      if (canManageTasks)
+                        GestureDetector(
+                          onTap: controller.isSubmitting.value
+                              ? null
+                              : () => _confirmDeleteFollowupSheet(context, controller, f),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                            child: Text('Delete',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.error)),
+                          ),
+                        ),
+                    ],
+                  ),
+              ],
             ),
-          );
+          ),
+        );
+      }
+
+      void addSection(String label, Color labelColor, List<CrmFollowupRow> rows, {bool isOverdue = false}) {
+        if (rows.isEmpty) return;
+        children.add(Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: Text('$label (${rows.length})',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: labelColor)),
+        ));
+        for (final f in rows) {
+          children.add(buildCard(f, isOverdue: isOverdue));
         }
       }
 
-      addSection('Overdue', overdue.length, const Color(0xFFE24B4A), overdue);
-      addSection('Today', todayItems.length, const Color(0xFFEF9F27), todayItems);
-      addSection('This week', thisWeek.length, const Color(0xFF185FA5), thisWeek);
+      addSection('Overdue', const Color(0xFFE24B4A), overdue, isOverdue: true);
+      addSection('Today', const Color(0xFFEF9F27), todayItems);
+      addSection('This week', const Color(0xFF185FA5), thisWeek);
+      if (done.isNotEmpty)
+        addSection('Completed', isDark ? Colors.white38 : Colors.grey.shade500, done);
 
       return SliverList(
         delegate: SliverChildBuilderDelegate(

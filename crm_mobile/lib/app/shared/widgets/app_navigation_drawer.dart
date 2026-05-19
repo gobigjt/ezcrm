@@ -154,6 +154,12 @@ class AppNavigationDrawer extends StatelessWidget {
                         selected: _selected(AppRoutes.crmLists),
                         onTap: () => _closeAndGo(AppRoutes.crmLists),
                       ),
+                      _DrawerTile(
+                        icon: Icons.alarm_outlined,
+                        label: 'Reminders',
+                        selected: _selected(AppRoutes.reminders),
+                        onTap: () => _closeAndGo(AppRoutes.reminders),
+                      ),
                     ],
                     if (auth.hasPermission(AppPermissions.sales)) ...[
                       _DrawerTile(

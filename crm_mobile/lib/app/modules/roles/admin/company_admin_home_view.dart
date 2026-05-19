@@ -11,6 +11,7 @@ import '../../../shared/widgets/app_navigation_drawer.dart';
 import '../../../shared/widgets/role_aware_bottom_nav.dart';
 import '../../../showcase/showcase_widgets.dart';
 import 'admin_overview_controller.dart';
+import '../../../shared/widgets/notif_bell.dart';
 
 class CompanyAdminHomeView extends GetView<AdminOverviewController> {
   const CompanyAdminHomeView({super.key});
@@ -28,8 +29,8 @@ class CompanyAdminHomeView extends GetView<AdminOverviewController> {
       appBar: AppBar(
         backgroundColor: isDark ? cs.surfaceContainerHigh : _appBarBg,
         foregroundColor: isDark ? cs.onSurface : Colors.white,
-        iconTheme: IconThemeData(color: isDark ? cs.onSurface : Colors.white),
-        actionsIconTheme: IconThemeData(color: isDark ? cs.onSurface : Colors.white),
+        iconTheme: IconThemeData(color: isDark ? cs.onSurface : Colors.white, size: 18),
+        actionsIconTheme: IconThemeData(color: isDark ? cs.onSurface : Colors.white, size: 18),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         title: Text(
@@ -37,15 +38,11 @@ class CompanyAdminHomeView extends GetView<AdminOverviewController> {
           style: TextStyle(
             color: isDark ? cs.onSurface : Colors.white,
             fontWeight: FontWeight.w700,
-            fontSize: 18,
+            fontSize: 15,
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: 'Notifications',
-            onPressed: () => Get.toNamed(AppRoutes.notifications),
-          ),
+          const NotifBell(),
           IconButton(
             icon: const Icon(Icons.person_outline_rounded),
             tooltip: 'Profile',

@@ -93,7 +93,7 @@ class _CrmListsViewState extends State<CrmListsView> {
       appBar: AppBar(
         backgroundColor: headerBg,
         foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white, size: 18),
         title: Text(
           _loading ? 'All lists' : 'All lists (${_sources.length + 1})',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),

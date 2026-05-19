@@ -15,6 +15,7 @@ import Settings  from './pages/settings/Settings';
 import Users     from './pages/users/Users';
 import Profile   from './pages/profile/Profile';
 import Tenants   from './pages/tenants/Tenants';
+import RemindersPage from './pages/RemindersPage';
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
               <Route path="/crm/*"         element={<PrivateRoute module="crm"><CRMRoutes /></PrivateRoute>} />
               <Route path="/sales/*"       element={<PrivateRoute module="sales"><SalesRoutes /></PrivateRoute>} />
               <Route path="/inventory/*"    element={<PrivateRoute module="inventory"><InventoryRoutes /></PrivateRoute>} />
+              <Route path="/reminders"     element={<PrivateRoute module="crm"><RemindersPage /></PrivateRoute>} />
               <Route path="/hr"            element={<PrivateRoute module="hr"><HR /></PrivateRoute>} />
               <Route path="/settings"      element={<PrivateRoute module="settings"><Settings /></PrivateRoute>} />
               <Route path="/profile"       element={<PrivateRoute><Profile /></PrivateRoute>} />

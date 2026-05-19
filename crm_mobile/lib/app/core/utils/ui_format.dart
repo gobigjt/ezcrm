@@ -135,3 +135,47 @@ Future<void> pickDateIntoController({
   );
   if (picked != null) controller.text = toYmd(picked);
 }
+
+/// Shows date picker then time picker; stores `YYYY-MM-DDTHH:MM` in controller.
+Future<void> pickDateTimeIntoController({
+  required BuildContext context,
+  required TextEditingController controller,
+}) async {
+  final now = DateTime.now();
+  final parsed = DateTime.tryParse(controller.text.trim());
+  final initDate = parsed ?? now;
+
+  final date = await showDatePicker(
+    context: context,
+    initialDate: initDate,
+    firstDate: DateTime(2000, 1, 1),
+    lastDate: DateTime(2100, 12, 31),
+  );
+  if (date == null || !context.mounted) return;
+
+  final time = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay(hour: initDate.hour, minute: initDate.minute),
+  );
+  if (time == null) return;
+
+  final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  final hh = time.hour.toString().padLeft(2, '0');
+  final mm = time.minute.toString().padLeft(2, '0');
+  controller.text = '${toYmd(dt)}T$hh:$mm';
+}
+
+/// `2026-05-18T10:30` → `18-May-2026 10:30`
+String formatIsoDateTime(dynamic value) {
+  if (value == null) return '—';
+  final s = value.toString().trim();
+  if (s.isEmpty) return '—';
+  final d = DateTime.tryParse(s);
+  if (d == null) return formatIsoDate(value);
+  final local = d.isUtc ? d.toLocal() : d;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final dd = local.day.toString().padLeft(2, '0');
+  final hh = local.hour.toString().padLeft(2, '0');
+  final mm = local.minute.toString().padLeft(2, '0');
+  return '$dd-${months[local.month - 1]}-${local.year} $hh:$mm';
+}

@@ -1,0 +1,34 @@
+{
+  "downloaded": [
+    {
+      "path": "/uploads/bucket/company/invoice-logos/1776617676680-3251l097.png",
+      "file": "C:\\dev\\herd-projects\\crm\\backend\\backups\\storage\\uploads\\bucket\\company\\invoice-logos\\1776617676680-3251l097.png",
+      "bytes": 8504
+    },
+    {
+      "path": "/uploads/bucket/users/avatars/1776617806234-rzlx0hl3.jpg",
+      "file": "C:\\dev\\herd-projects\\crm\\backend\\backups\\storage\\uploads\\bucket\\users\\avatars\\1776617806234-rzlx0hl3.jpg",
+      "bytes": 31315
+    }
+  ],
+  "failed": [
+    {
+      "path": "/uploads/company/favicon-1776166196365.png",
+      "error": "HTTP 404"
+    },
+    {
+      "path": "/uploads/company/logo-1776166191837.png",
+      "error": "HTTP 404"
+    },
+    {
+      "path": "/uploads/users/avatar-1776080972133.jpeg",
+      "error": "HTTP 404"
+    },
+    {
+      "path": "/uploads/users/avatar-1776498278574.jpg",
+      "error": "HTTP 404"
+    }
+  ],
+  "bucketObjects": 3,
+  "at": "2026-05-17T16:40:28.680Z"
+}
