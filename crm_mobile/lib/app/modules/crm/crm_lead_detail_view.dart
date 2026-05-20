@@ -708,13 +708,21 @@ class CrmLeadDetailView extends StatelessWidget {
               maxLines: 4,
             ),
             const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () async {
-                if (dateCtrl.text.trim().isEmpty) return;
-                await controller.addFollowup(dueDate: dateCtrl.text.trim(), description: descCtrl.text.trim());
-                if (context.mounted) Navigator.of(context).pop();
-              },
-              child: const Text('Save Follow-up'),
+            Obx(
+              () => FilledButton(
+                onPressed: controller.isSubmitting.value
+                    ? null
+                    : () async {
+                        if (dateCtrl.text.trim().isEmpty) return;
+                        try {
+                          await controller.addFollowup(dueDate: dateCtrl.text.trim(), description: descCtrl.text.trim());
+                          if (context.mounted) Navigator.of(context).pop();
+                        } catch (e) {
+                          Get.snackbar('Error', e.toString(), snackPosition: SnackPosition.BOTTOM);
+                        }
+                      },
+                child: const Text('Save Follow-up'),
+              ),
             ),
           ],
         ),

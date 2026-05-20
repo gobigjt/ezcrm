@@ -69,6 +69,13 @@ class CrmLeadDetailController extends GetxController {
     }
   }
 
+  Future<void> _refreshFollowups() async {
+    final folRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/$leadId/followups');
+    followups.assignAll(
+      (folRes as List).map((e) => CrmFollowupRow.fromJson(Map<String, dynamic>.from(e as Map))),
+    );
+  }
+
   Future<void> addFollowup({
     required String dueDate,
     required String description,
@@ -80,7 +87,7 @@ class CrmLeadDetailController extends GetxController {
         path: '/crm/leads/$leadId/followups',
         body: {'due_date': dueDateForTimestamptzApi(dueDate), 'description': description},
       );
-      await load();
+      await _refreshFollowups();
     } finally {
       isSubmitting.value = false;
     }
@@ -91,7 +98,7 @@ class CrmLeadDetailController extends GetxController {
       method: 'PATCH',
       path: '/crm/leads/$leadId/followups/$followupId/done',
     );
-    await load();
+    await _refreshFollowups();
   }
 
   Future<void> updateFollowup({
@@ -109,7 +116,7 @@ class CrmLeadDetailController extends GetxController {
           'description': description,
         },
       );
-      await load();
+      await _refreshFollowups();
     } finally {
       isSubmitting.value = false;
     }
@@ -122,7 +129,7 @@ class CrmLeadDetailController extends GetxController {
         method: 'DELETE',
         path: '/crm/leads/$leadId/followups/$followupId',
       );
-      await load();
+      await _refreshFollowups();
     } finally {
       isSubmitting.value = false;
     }
