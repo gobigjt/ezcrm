@@ -24,21 +24,30 @@ export class ObjectStorageService {
     return s;
   }
 
+  isConfigured(): boolean {
+    return Boolean(
+      this.cleanEnv(process.env.STORAGE_BUCKET_NAME) &&
+      this.cleanEnv(process.env.STORAGE_BUCKET_ENDPOINT) &&
+      this.cleanEnv(process.env.STORAGE_BUCKET_ACCESS_KEY_ID) &&
+      this.cleanEnv(process.env.STORAGE_BUCKET_SECRET_ACCESS_KEY),
+    );
+  }
+
   private readConfig(): StorageConfig {
     if (this.cfg) return this.cfg;
 
-    const bucket = this.cleanEnv(process.env.RAILWAY_BUCKET_NAME);
-    const endpoint = this.cleanEnv(process.env.RAILWAY_BUCKET_ENDPOINT);
-    const region = this.cleanEnv(process.env.RAILWAY_BUCKET_REGION) || 'auto';
-    const accessKeyId = this.cleanEnv(process.env.RAILWAY_BUCKET_ACCESS_KEY_ID);
-    const secretAccessKey = this.cleanEnv(process.env.RAILWAY_BUCKET_SECRET_ACCESS_KEY);
-    const acl = this.cleanEnv(process.env.RAILWAY_BUCKET_ACL);
-    const forcePathStyleRaw = this.cleanEnv(process.env.RAILWAY_BUCKET_FORCE_PATH_STYLE).toLowerCase();
+    const bucket = this.cleanEnv(process.env.STORAGE_BUCKET_NAME);
+    const endpoint = this.cleanEnv(process.env.STORAGE_BUCKET_ENDPOINT);
+    const region = this.cleanEnv(process.env.STORAGE_BUCKET_REGION) || 'auto';
+    const accessKeyId = this.cleanEnv(process.env.STORAGE_BUCKET_ACCESS_KEY_ID);
+    const secretAccessKey = this.cleanEnv(process.env.STORAGE_BUCKET_SECRET_ACCESS_KEY);
+    const acl = this.cleanEnv(process.env.STORAGE_BUCKET_ACL);
+    const forcePathStyleRaw = this.cleanEnv(process.env.STORAGE_BUCKET_FORCE_PATH_STYLE).toLowerCase();
     const forcePathStyle = forcePathStyleRaw ? forcePathStyleRaw === 'true' || forcePathStyleRaw === '1' : true;
 
     if (!bucket || !endpoint || !accessKeyId || !secretAccessKey) {
       throw new InternalServerErrorException(
-        'Railway bucket is not configured. Set RAILWAY_BUCKET_NAME, RAILWAY_BUCKET_ENDPOINT, and Railway bucket credentials.',
+        'Object storage is not configured. Set STORAGE_BUCKET_NAME, STORAGE_BUCKET_ENDPOINT, STORAGE_BUCKET_ACCESS_KEY_ID and STORAGE_BUCKET_SECRET_ACCESS_KEY in your .env.',
       );
     }
 
