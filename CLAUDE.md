@@ -119,10 +119,28 @@ flutter run --dart-define=API_BASE_URL=http://127.0.0.1:4000/api
 
 ## Deployment
 
-- **Production host**: Railway / VPS (Redonix domain `redonix.in`)
-- **Backend public URL**: Set `API_PUBLIC_URL` so Puppeteer can load `/uploads/...` assets when rendering PDFs
-- **Persistent storage**: Local `./uploads` is wiped on redeploy — use object storage env vars in production
-- **Frontend deploy**: FTP script at `deploy_frontend_ftp.ps1`
+### Backend — Hostinger VPS
+
+- **Server IP**: `187.127.167.12`
+- **SSH**: `ssh root@187.127.167.12 -i ~/.ssh/id_ezcrm`
+- **App path**: `/home/redonix/public_html/api-ezcrm`
+- **API URL**: `https://api-ezcrm.redonix.in/api`
+- **Deploy steps**:
+  1. `git pull` inside `/home/redonix/public_html/api-ezcrm`
+  2. `npm install`
+  3. `npm run migrate` (run any pending migrations)
+  4. `npm run build` then restart the process (PM2 or systemd)
+
+### Frontend — Hostinger Cloud Hosting
+
+- **Domain**: `app.ezflowcrm.com`
+- **FTP host**: `88.222.211.181` (port 21)
+- **FTP user**: `u547357606.app.ezflowcrm.com`
+- **Upload folder**: `public_html`
+- **Deploy script**: `deploy_frontend_ftp.ps1` (builds then FTPs `frontend/dist`)
+- **Deploy steps**:
+  1. `cd frontend && npm run build`
+  2. Run `.\deploy_frontend_ftp.ps1` from project root
 
 ---
 
