@@ -90,13 +90,30 @@ function SectionHeader({ title, sub, to }) {
 // ─── Main Dashboard ───────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth();
-  const [stats,  setStats]  = useState(null);
-  const [charts, setCharts] = useState(null);
+  const role = String(user?.role || '').toLowerCase();
+  const isAdmin = role === 'admin' || role === 'super admin';
+  const isManager = role === 'sales manager' || role === 'manager';
+  const isExec = !isAdmin && !isManager;
+
+  const [stats,    setStats]    = useState(null);
+  const [charts,   setCharts]   = useState(null);
+  const [teamPerf, setTeamPerf] = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState(false);
 
   useEffect(() => {
-    api.get('/settings/dashboard').then(r => setStats(r.data)).catch(() => {});
-    api.get('/settings/dashboard/charts').then(r => setCharts(r.data)).catch(() => {});
-  }, []);
+    setLoading(true);
+    setError(false);
+    Promise.all([
+      api.get('/settings/dashboard').then(r => setStats(r.data)),
+      api.get('/settings/dashboard/charts').then(r => setCharts(r.data)),
+      ...(isAdmin || isManager
+        ? [api.get('/settings/dashboard/team-performance').then(r => setTeamPerf(r.data))]
+        : []),
+    ])
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  }, [isAdmin, isManager]);
 
   const salesCards = useMemo(() => {
     const ss = charts?.sales_stats || {};
@@ -118,6 +135,144 @@ export default function Dashboard() {
   ], [stats]);
 
   const fyLabel = charts ? `${charts.fy_current} vs ${charts.fy_prev}` : 'Yearly Comparison';
+
+  // ── Sales Executive view ─────────────────────────────────────
+  if (isExec) {
+    const ss = charts?.sales_stats || {};
+
+    if (loading) return (
+      <div className="flex items-center justify-center h-64 text-slate-400 dark:text-slate-500 text-sm gap-2">
+        <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+        Loading your dashboard…
+      </div>
+    );
+
+    if (error) return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-slate-500 dark:text-slate-400 text-sm">Failed to load dashboard data.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 rounded-lg bg-brand-600 text-white text-xs font-semibold hover:bg-brand-700"
+        >
+          Retry
+        </button>
+      </div>
+    );
+
+    return (
+      <div className="space-y-5">
+        {/* Greeting */}
+        <div>
+          <h2 className="text-[16px] font-semibold text-slate-800 dark:text-slate-100">
+            Good {greeting()}, {user?.name?.split(' ')[0]}
+          </h2>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">Here's your personal performance overview</p>
+        </div>
+
+        {/* Personal KPIs */}
+        {stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <KpiCard icon="📊" label="My Leads"      value={fmtNum(stats.open_leads)}       color="brand" to="/crm" sub="Open leads" />
+            <KpiCard icon="💰" label="My Revenue"    value={fmtINR(stats.revenue)}          color="green" to="/sales?tab=invoices" sub="Paid invoices" />
+            <KpiCard icon="📦" label="My Orders"     value={fmtNum(stats.active_orders)}    color="amber" to="/sales?tab=orders" sub="In progress" />
+            <KpiCard icon="⏰" label="Overdue"       value={fmtNum(stats.overdue_invoices)} color="red"   to="/sales?tab=invoices" sub="Unpaid past due" />
+          </div>
+        )}
+
+        {/* Secondary KPIs */}
+        {stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <KpiCard icon="🆕" label="New This Week" value={fmtNum(stats.open_leads_new_7d)} color="sky"    to="/crm" sub="Leads last 7 days" />
+            <KpiCard icon="🧾" label="My Invoices"   value={fmtNum(ss.total_invoices)}       color="violet" to="/sales?tab=invoices" sub="Total raised" />
+            <KpiCard icon="✅" label="Paid"          value={fmtINR(ss.paid_amount)}          color="green"  to="/sales?tab=invoices" sub="Collected" />
+            <KpiCard icon="❌" label="Unpaid"        value={fmtINR(ss.unpaid_amount)}        color="red"    to="/sales?tab=invoices" sub="Outstanding" />
+          </div>
+        )}
+
+        {/* My Monthly Sales Chart */}
+        {charts && (
+          <div className={cardCls}>
+            <SectionHeader title="My Monthly Sales" sub={`${charts.fy_current} vs ${charts.fy_prev}`} to="/sales?tab=invoices" />
+            <div style={{ height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={charts.monthly_comparison || []} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barGap={4}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                  <YAxis tickFormatter={fmtINRShort} tick={{ fontSize: 10 }} width={52} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="current" name={charts.fy_current || 'Current FY'} fill="#534AB7" radius={[3,3,0,0]} />
+                  <Bar dataKey="prev"    name={charts.fy_prev    || 'Prev FY'}    fill="#1D9E75" radius={[3,3,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* My Recent Invoices */}
+        {charts && (
+          <div className={cardCls}>
+            <SectionHeader title="My Recent Invoices" to="/sales?tab=invoices" />
+            {charts.recent_invoices?.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[360px]">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-700/50">
+                      {['Invoice #', 'Customer', 'Amount', 'Balance', 'Status', 'Date'].map(h => (
+                        <th key={h} className="px-2 py-2 text-left font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                    {charts.recent_invoices.map((inv, i) => (
+                      <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                        <td className="px-2 py-2 font-mono font-semibold text-brand-600 dark:text-brand-400 whitespace-nowrap">{inv.invoice_number}</td>
+                        <td className="px-2 py-2 text-slate-700 dark:text-slate-200 max-w-[100px] truncate">{inv.customer_name}</td>
+                        <td className="px-2 py-2 tabular-nums font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">{fmtINR(inv.total_amount)}</td>
+                        <td className="px-2 py-2 tabular-nums text-amber-600 whitespace-nowrap">{fmtINR(inv.balance)}</td>
+                        <td className="px-2 py-2">
+                          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${STATUS_CLS[inv.status] || STATUS_CLS.pending}`}>{inv.status}</span>
+                        </td>
+                        <td className="px-2 py-2 text-slate-500 whitespace-nowrap">{fmtD(inv.invoice_date)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-center py-8 text-slate-400 text-xs">No invoices yet</p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Admin / Manager view ──────────────────────────────────────
+  if (loading) return (
+    <div className="flex items-center justify-center h-64 text-slate-400 dark:text-slate-500 text-sm gap-2">
+      <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+      </svg>
+      Loading dashboard…
+    </div>
+  );
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center h-64 gap-3">
+      <p className="text-slate-500 dark:text-slate-400 text-sm">Failed to load dashboard data.</p>
+      <button
+        onClick={() => window.location.reload()}
+        className="px-4 py-2 rounded-lg bg-brand-600 text-white text-xs font-semibold hover:bg-brand-700"
+      >
+        Retry
+      </button>
+    </div>
+  );
 
   return (
     <div className="space-y-5">
@@ -141,6 +296,41 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {crmCards.map(c => <KpiCard key={c.label} {...c} />)}
       </div>
+
+      {/* Team Performance Table */}
+      {(isAdmin || isManager) && teamPerf && teamPerf.length > 0 && (
+        <div className={cardCls}>
+          <SectionHeader title="Team Performance" sub="Sales executive breakdown" />
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-700">
+                  {['Executive','Leads','Converted','Conv. Rate','Orders','Revenue','Tasks Done'].map(h => (
+                    <th key={h} className="text-left py-2 px-2 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wide text-[10px]">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {teamPerf.map(e => (
+                  <tr key={e.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="py-2 px-2 font-medium text-slate-800 dark:text-slate-100">{e.name}</td>
+                    <td className="py-2 px-2 text-slate-600 dark:text-slate-300">{e.total_leads}</td>
+                    <td className="py-2 px-2 text-emerald-600 dark:text-emerald-400">{e.converted_leads}</td>
+                    <td className="py-2 px-2">
+                      <span className={`px-1.5 py-0.5 rounded-full font-semibold ${e.conversion_rate >= 50 ? 'bg-emerald-100 text-emerald-700' : e.conversion_rate >= 25 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>
+                        {e.conversion_rate}%
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 text-slate-600 dark:text-slate-300">{e.total_orders}</td>
+                    <td className="py-2 px-2 font-semibold text-slate-800 dark:text-slate-100">{fmtINR(e.revenue)}</td>
+                    <td className="py-2 px-2 text-slate-600 dark:text-slate-300">{e.tasks_done}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Yearly Sales Comparison Bar Chart */}
       <div className={cardCls}>

@@ -3,14 +3,21 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react({ jsxRuntime: 'automatic', babel: { plugins: [] } })],
   test: {
-    environment: 'node',
-    include: ['src/**/*.test.js'],
+    globals: true,
+    environment: 'jsdom',
+    include: ['src/**/*.test.{js,jsx}'],
+    setupFiles: ['src/test/setup.js'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['src/utils/**'],
+      include: ['src/utils/**', 'src/components/**'],
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        branches: 60,
+      },
     },
   },
   server: {

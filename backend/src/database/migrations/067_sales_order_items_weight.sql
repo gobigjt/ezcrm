@@ -1,0 +1,2 @@
+ALTER TABLE sales_order_items ADD COLUMN IF NOT EXISTS unit_weight NUMERIC(10,3) DEFAULT 0;
+ALTER TABLE sales_order_items ADD COLUMN IF NOT EXISTS line_weight NUMERIC(10,3) DEFAULT 0;

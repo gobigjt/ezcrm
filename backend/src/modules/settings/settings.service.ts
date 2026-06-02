@@ -128,8 +128,19 @@ export class SettingsService {
         /* ignore */
       }
     }
-    const uploaded = await this.objectStorage.uploadPublicImage(file, 'company/invoice-logos');
-    return this.upsertCompanySettings({ invoice_logo_url: uploaded.url }, actorId, ctx);
+    if (this.objectStorage.isConfigured()) {
+      const uploaded = await this.objectStorage.uploadPublicImage(file, 'company/invoice-logos');
+      return this.upsertCompanySettings({ invoice_logo_url: uploaded.url }, actorId, ctx);
+    }
+    // Fall back to local storage when S3 is not configured
+    const ext = String(file.originalname || '').split('.').pop()?.toLowerCase() || 'jpg';
+    const filename = `invoice-logo-${Date.now()}.${ext}`;
+    const uploadsDir = join(process.cwd(), 'uploads', 'company');
+    const { mkdirSync, writeFileSync } = await import('fs');
+    mkdirSync(uploadsDir, { recursive: true });
+    writeFileSync(join(uploadsDir, filename), file.buffer);
+    const rel = `/uploads/company/${filename}`;
+    return this.upsertCompanySettings({ invoice_logo_url: rel }, actorId, ctx);
   }
 
   async listPermissions(_ctx?: { tenant_id?: unknown; role?: unknown }) {
@@ -185,21 +196,45 @@ export class SettingsService {
 
   async getDashboardStats(ctx?: { tenant_id?: unknown; role?: unknown }) {
     const tenantId = this.requireTenantId(ctx);
-    const cacheKey = `dashboard:stats:${tenantId || 'all'}`;
+    const role = String((ctx as any)?.role || '').trim().toLowerCase();
+    const uid = Number((ctx as any)?.id || 0);
+    const isAdmin = role === 'admin' || role === 'super admin';
+    const isManager = role === 'sales manager' || role === 'manager';
+
+    const cacheKey = isAdmin ? `dashboard:stats:${tenantId || 'all'}` : `dashboard:stats:${tenantId}:${uid}`;
     const cached = await this.cache.get(cacheKey);
     if (cached) return cached;
+
+    // leadsScope  — leads table has assigned_to; match leads owned or assigned to the user
+    // createdScope — invoices/orders only have created_by, no assigned_to column
+    let leadsScope = '';
+    let createdScope = '';
+    let userParams: any[] = [];
+    if (!isAdmin && uid > 0) {
+      if (isManager) {
+        const managerFilter = `(created_by = $2 OR created_by IN (SELECT id FROM users WHERE sales_manager_id = $2 AND tenant_id = $1))`;
+        leadsScope   = `AND (assigned_to = $2 OR ${managerFilter})`;
+        createdScope = `AND ${managerFilter}`;
+        userParams   = [uid];
+      } else {
+        leadsScope   = `AND (assigned_to = $2 OR created_by = $2)`;
+        createdScope = `AND created_by = $2`;
+        userParams   = [uid];
+      }
+    }
+
     const [leads, invoices, orders, employees, openNew7d, overdueInv, usersActive] = await Promise.all([
-      this.db.query('SELECT COUNT(*) FROM leads WHERE is_converted=FALSE AND ($1::integer = 0 OR tenant_id = $1)', [tenantId]),
-      this.db.query("SELECT COALESCE(SUM(total_amount),0) AS revenue FROM invoices WHERE status='paid' AND ($1::integer = 0 OR tenant_id = $1)", [tenantId]),
-      this.db.query("SELECT COUNT(*) FROM sales_orders WHERE status NOT IN ('delivered','cancelled') AND ($1::integer = 0 OR tenant_id = $1)", [tenantId]),
+      this.db.query(`SELECT COUNT(*) FROM leads WHERE is_converted=FALSE AND ($1::integer = 0 OR tenant_id = $1) ${leadsScope}`, [tenantId, ...userParams]),
+      this.db.query(`SELECT COALESCE(SUM(total_amount),0) AS revenue FROM invoices WHERE status='paid' AND ($1::integer = 0 OR tenant_id = $1) ${createdScope}`, [tenantId, ...userParams]),
+      this.db.query(`SELECT COUNT(*) FROM sales_orders WHERE status NOT IN ('delivered','cancelled') AND ($1::integer = 0 OR tenant_id = $1) ${createdScope}`, [tenantId, ...userParams]),
       this.db.query('SELECT COUNT(*) FROM employees e LEFT JOIN users u ON u.id=e.user_id WHERE e.is_active=TRUE AND ($1::integer = 0 OR u.tenant_id = $1)', [tenantId]),
       this.db.query(
-        `SELECT COUNT(*) FROM leads WHERE is_converted=FALSE AND created_at >= NOW() - INTERVAL '7 days' AND ($1::integer = 0 OR tenant_id = $1)`,
-        [tenantId],
+        `SELECT COUNT(*) FROM leads WHERE is_converted=FALSE AND created_at >= NOW() - INTERVAL '7 days' AND ($1::integer = 0 OR tenant_id = $1) ${leadsScope}`,
+        [tenantId, ...userParams],
       ),
       this.db.query(
-        `SELECT COUNT(*) FROM invoices WHERE status <> 'paid' AND due_date IS NOT NULL AND due_date < CURRENT_DATE AND ($1::integer = 0 OR tenant_id = $1)`,
-        [tenantId],
+        `SELECT COUNT(*) FROM invoices WHERE status <> 'paid' AND due_date IS NOT NULL AND due_date < CURRENT_DATE AND ($1::integer = 0 OR tenant_id = $1) ${createdScope}`,
+        [tenantId, ...userParams],
       ),
       this.db.query('SELECT COUNT(*) FROM users WHERE is_active=TRUE AND ($1::integer = 0 OR tenant_id = $1)', [tenantId]),
     ]);
@@ -218,9 +253,31 @@ export class SettingsService {
 
   async getDashboardCharts(ctx?: { tenant_id?: unknown; role?: unknown }) {
     const tenantId = this.requireTenantId(ctx);
-    const cacheKey = `dashboard:charts:${tenantId || 'all'}`;
+    const role = String((ctx as any)?.role || '').trim().toLowerCase();
+    const uid = Number((ctx as any)?.id || 0);
+    const isAdmin = role === 'admin' || role === 'super admin';
+    const isManager = role === 'sales manager' || role === 'manager';
+
+    const cacheKey = isAdmin ? `dashboard:charts:${tenantId || 'all'}` : `dashboard:charts:${tenantId}:${uid}`;
     const cached = await this.cache.get(cacheKey);
     if (cached) return cached;
+
+    // userScope     — for single-table invoice queries (no alias)
+    // userScopeJoin — for JOIN queries where invoices is aliased as "i"
+    let userScope = '';
+    let userScopeJoin = '';
+    let userParams: any[] = [];
+    if (!isAdmin && uid > 0) {
+      if (isManager) {
+        userScope     = `AND (created_by = $2 OR created_by IN (SELECT id FROM users WHERE sales_manager_id = $2 AND tenant_id = $1))`;
+        userScopeJoin = `AND (i.created_by = $2 OR i.created_by IN (SELECT id FROM users WHERE sales_manager_id = $2 AND tenant_id = $1))`;
+        userParams    = [uid];
+      } else {
+        userScope     = `AND created_by = $2`;
+        userScopeJoin = `AND i.created_by = $2`;
+        userParams    = [uid];
+      }
+    }
 
     const now = new Date();
     const curFYStart = now.getMonth() >= 3
@@ -231,25 +288,42 @@ export class SettingsService {
     const prevFYEnd   = curFYStart;
     const fmtDate = (d: Date) => d.toISOString().split('T')[0];
 
+    // userScopeP3     — single-table queries where tenantId is $3 (no alias)
+    // userScopeP3Join — JOIN queries where invoices is aliased as "i" and tenantId is $3
+    let userScopeP3 = '';
+    let userScopeP3Join = '';
+    let userParamsP3: any[] = [];
+    if (!isAdmin && uid > 0) {
+      if (isManager) {
+        userScopeP3     = `AND (created_by = $4 OR created_by IN (SELECT id FROM users WHERE sales_manager_id = $4 AND tenant_id = $3))`;
+        userScopeP3Join = `AND (i.created_by = $4 OR i.created_by IN (SELECT id FROM users WHERE sales_manager_id = $4 AND tenant_id = $3))`;
+        userParamsP3    = [uid];
+      } else {
+        userScopeP3     = `AND created_by = $4`;
+        userScopeP3Join = `AND i.created_by = $4`;
+        userParamsP3    = [uid];
+      }
+    }
+
     const [curSales, prevSales, clientSales, recentBuyers, recentInvoices, lowStock, salesStats] =
       await Promise.all([
         this.db.query(
           `SELECT EXTRACT(MONTH FROM invoice_date)::int AS m, EXTRACT(YEAR FROM invoice_date)::int AS y,
                   COALESCE(SUM(total_amount),0) AS amount
-           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 AND ($3::integer = 0 OR tenant_id = $3) GROUP BY m, y`,
-          [fmtDate(curFYStart), fmtDate(curFYEnd), tenantId],
+           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 AND ($3::integer = 0 OR tenant_id = $3) ${userScopeP3} GROUP BY m, y`,
+          [fmtDate(curFYStart), fmtDate(curFYEnd), tenantId, ...userParamsP3],
         ),
         this.db.query(
           `SELECT EXTRACT(MONTH FROM invoice_date)::int AS m, EXTRACT(YEAR FROM invoice_date)::int AS y,
                   COALESCE(SUM(total_amount),0) AS amount
-           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 AND ($3::integer = 0 OR tenant_id = $3) GROUP BY m, y`,
-          [fmtDate(prevFYStart), fmtDate(prevFYEnd), tenantId],
+           FROM invoices WHERE invoice_date >= $1 AND invoice_date < $2 AND ($3::integer = 0 OR tenant_id = $3) ${userScopeP3} GROUP BY m, y`,
+          [fmtDate(prevFYStart), fmtDate(prevFYEnd), tenantId, ...userParamsP3],
         ),
         this.db.query(
           `WITH top_clients AS (
              SELECT customer_id FROM invoices
              WHERE invoice_date >= $1 AND invoice_date < $2
-               AND ($3::integer = 0 OR tenant_id = $3)
+               AND ($3::integer = 0 OR tenant_id = $3) ${userScopeP3}
              GROUP BY customer_id ORDER BY SUM(total_amount) DESC LIMIT 8
            )
            SELECT c.name AS customer_name,
@@ -260,9 +334,9 @@ export class SettingsService {
            JOIN customers c ON c.id = i.customer_id
            WHERE i.customer_id IN (SELECT customer_id FROM top_clients)
              AND i.invoice_date >= $1 AND i.invoice_date < $2
-             AND ($3::integer = 0 OR i.tenant_id = $3)
+             AND ($3::integer = 0 OR i.tenant_id = $3) ${userScopeP3Join}
            GROUP BY c.name, m, y`,
-          [fmtDate(curFYStart), fmtDate(curFYEnd), tenantId],
+          [fmtDate(curFYStart), fmtDate(curFYEnd), tenantId, ...userParamsP3],
         ),
         this.db.query(
           `SELECT c.name, COALESCE(SUM(i.total_amount),0) AS total_spent,
@@ -277,9 +351,9 @@ export class SettingsService {
                   i.total_amount, i.status, i.invoice_date,
                   i.total_amount - COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id=i.id),0) AS balance
            FROM invoices i JOIN customers c ON c.id = i.customer_id
-           WHERE ($1::integer = 0 OR i.tenant_id = $1)
+           WHERE ($1::integer = 0 OR i.tenant_id = $1) ${userScopeJoin}
            ORDER BY i.created_at DESC LIMIT 6`,
-          [tenantId],
+          [tenantId, ...userParams],
         ),
         this.db.query(
           `SELECT p.name, p.sku, p.low_stock_alert,
@@ -298,8 +372,8 @@ export class SettingsService {
                   COALESCE(SUM(CASE WHEN status='partial' THEN total_amount ELSE 0 END),0) AS partial_amount,
                   COUNT(DISTINCT customer_id) AS unique_customers
            FROM invoices
-           WHERE ($1::integer = 0 OR tenant_id = $1)`,
-          [tenantId],
+           WHERE ($1::integer = 0 OR tenant_id = $1) ${userScope}`,
+          [tenantId, ...userParams],
         ),
       ]);
 
@@ -370,6 +444,50 @@ export class SettingsService {
 
     await this.cache.set(cacheKey, result, 300);
     return result;
+  }
+
+  async getTeamPerformance(ctx?: { id?: unknown; role?: unknown; tenant_id?: unknown }) {
+    const tenantId = this.requireTenantId(ctx);
+    const uid = Number((ctx as any)?.id || 0);
+    const role = String((ctx as any)?.role || '').trim().toLowerCase();
+    const isAdmin = role === 'admin' || role === 'super admin';
+
+    const execWhere = isAdmin
+      ? `WHERE u.role IN ('Sales Executive', 'Agent') AND ($1::integer = 0 OR u.tenant_id = $1)`
+      : `WHERE u.role IN ('Sales Executive', 'Agent') AND u.sales_manager_id = $2 AND ($1::integer = 0 OR u.tenant_id = $1)`;
+    const execParams = isAdmin ? [tenantId] : [tenantId, uid];
+
+    const execs = await this.db.query(
+      `SELECT u.id, u.name, u.email FROM users u ${execWhere} ORDER BY LOWER(u.name)`,
+      execParams,
+    );
+
+    const results = await Promise.all(execs.rows.map(async (exec) => {
+      const eid = exec.id;
+      const [leads, converted, invoices, orders, tasks] = await Promise.all([
+        this.db.query('SELECT COUNT(*) FROM leads WHERE (assigned_to=$1 OR created_by=$1) AND ($2::integer=0 OR tenant_id=$2)', [eid, tenantId]),
+        this.db.query('SELECT COUNT(*) FROM leads WHERE is_converted=TRUE AND (assigned_to=$1 OR created_by=$1) AND ($2::integer=0 OR tenant_id=$2)', [eid, tenantId]),
+        this.db.query("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount),0) as revenue FROM invoices WHERE created_by=$1 AND ($2::integer=0 OR tenant_id=$2)", [eid, tenantId]),
+        this.db.query("SELECT COUNT(*) FROM sales_orders WHERE created_by=$1 AND ($2::integer=0 OR tenant_id=$2)", [eid, tenantId]),
+        this.db.query("SELECT COUNT(*) FROM lead_followups lf JOIN leads l ON l.id=lf.lead_id WHERE lf.assigned_to=$1 AND lf.is_done=TRUE AND ($2::integer=0 OR l.tenant_id=$2)", [eid, tenantId]),
+      ]);
+      const totalLeads = Number(leads.rows[0].count);
+      const convertedLeads = Number(converted.rows[0].count);
+      return {
+        id: exec.id,
+        name: exec.name,
+        email: exec.email,
+        total_leads: totalLeads,
+        converted_leads: convertedLeads,
+        conversion_rate: totalLeads > 0 ? Math.round((convertedLeads / totalLeads) * 100) : 0,
+        total_invoices: Number(invoices.rows[0].cnt),
+        revenue: Number(invoices.rows[0].revenue),
+        total_orders: Number(orders.rows[0].count),
+        tasks_done: Number(tasks.rows[0].count),
+      };
+    }));
+
+    return results;
   }
 
   /** Real aggregates for Super Admin platform screens (single-tenant DB today). */
