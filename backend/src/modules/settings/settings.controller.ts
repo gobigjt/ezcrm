@@ -164,6 +164,7 @@ export class SettingsController {
 
   @Get('dashboard')        getDashboardStats(@CurrentUser() u: any)  { return this.svc.getDashboardStats(u); }
   @Get('dashboard/charts') getDashboardCharts(@CurrentUser() u: any) { return this.svc.getDashboardCharts(u); }
+  @Get('dashboard/team-performance') getTeamPerformance(@CurrentUser() u: any) { return this.svc.getTeamPerformance(u); }
 
   @UseGuards(RolesGuard) @Roles('Super Admin')
   @Get('platform/summary')
