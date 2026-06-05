@@ -1336,7 +1336,10 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
   const [doc,     setDoc]     = useState(null);
   const [paying,  setPaying]  = useState(false);
   const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [pdfTemplate, setPdfTemplate] = useState(() => Number(localStorage.getItem('pdfTemplate') || 1));
   const autoPdfTriggeredRef = useRef(false);
+
+  const setTemplate = (t) => { setPdfTemplate(t); localStorage.setItem('pdfTemplate', String(t)); };
 
   useEffect(() => {
     if (fullPage) return undefined;
@@ -1354,17 +1357,17 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
 
   useEffect(() => { load(); }, [load]);
 
-  const runDownloadPdf = useCallback(async () => {
+  const runDownloadPdf = useCallback(async (tpl) => {
     if (!doc) return;
     setPdfDownloading(true);
     try {
-      await downloadSalesDocument(type, doc);
+      await downloadSalesDocument(type, doc, tpl || pdfTemplate);
     } catch (err) {
       show(apiErrorMessage(err, 'Could not download PDF'), 'error');
     } finally {
       setPdfDownloading(false);
     }
-  }, [doc, type, show]);
+  }, [doc, type, show, pdfTemplate]);
 
   useEffect(() => {
     if (!autoDownloadPdf || !doc || autoPdfTriggeredRef.current) return;
@@ -1471,9 +1474,22 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
               )}
               {(type === 'quotation' || type === 'order' || type === 'invoice') && (
                 <>
+                  {/* Template selector */}
+                  <div className="flex items-center gap-0.5 rounded-lg border border-slate-300 dark:border-slate-600 overflow-hidden text-[11px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setTemplate(1)}
+                      className={`px-2 py-1 transition-colors ${pdfTemplate === 1 ? 'bg-[#0077B6] text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                    >T1</button>
+                    <button
+                      type="button"
+                      onClick={() => setTemplate(2)}
+                      className={`px-2 py-1 transition-colors ${pdfTemplate === 2 ? 'bg-[#0077B6] text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                    >T2</button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => printSalesDoc(type, doc)}
+                    onClick={() => printSalesDocument(type, doc, pdfTemplate)}
                     className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
                     Print
@@ -1482,7 +1498,7 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
                     type="button"
                     onClick={() => void runDownloadPdf()}
                     disabled={pdfDownloading}
-                    className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 disabled:opacity-60 disabled:pointer-events-none inline-flex items-center gap-1.5"
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#0077B6] text-white hover:bg-[#0096C7] disabled:opacity-60 disabled:pointer-events-none inline-flex items-center gap-1.5"
                   >
                     {pdfDownloading && (
                       <span className="inline-block h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" aria-hidden />
@@ -1535,7 +1551,7 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-800/50">
                     <tr>
-                      {['Description','Qty','Price','GST%','Total'].map(h => (
+                      {['Description','Qty','Price','GST%','Total', ...(type === 'invoice' ? ['Weight'] : [])].map(h => (
                         <th key={h} className="px-3 py-2 text-left font-semibold text-slate-500 dark:text-slate-400">{h}</th>
                       ))}
                     </tr>
@@ -1548,6 +1564,11 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
                         <td className="px-3 py-2 font-mono text-slate-600 dark:text-slate-300">{fmt(it.unit_price)}</td>
                         <td className="px-3 py-2 text-slate-500">{it.gst_rate}%</td>
                         <td className="px-3 py-2 font-semibold font-mono text-slate-800 dark:text-slate-100">{fmt(it.total)}</td>
+                        {type === 'invoice' && (
+                          <td className="px-3 py-2 font-mono text-slate-600 dark:text-slate-300">
+                            {Number(it.line_weight || 0).toFixed(3)} kg
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -1567,6 +1588,9 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
                     const igst = Number(doc.igst || 0);
                     const totalTax = cgst + sgst + igst;
                     const showIgst = igst > 0;
+                    const totalWeight = type === 'invoice'
+                      ? doc.items.reduce((s, it) => s + Number(it.line_weight || 0), 0)
+                      : null;
                     return (
                       <>
                         <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>Sub Total</span><span className="font-mono">{fmt(subtotal)}</span></div>
@@ -1579,6 +1603,9 @@ function DetailDrawer({ type, id, onClose, onRefresh, onEditQuotation, onEditInv
                           </>
                         )}
                         <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>Total Tax Charges</span><span className="font-mono">{fmt(totalTax)}</span></div>
+                        {totalWeight !== null && (
+                          <div className="flex justify-between text-slate-500 dark:text-slate-400"><span>Total Weight</span><span className="font-mono">{totalWeight.toFixed(3)} kg</span></div>
+                        )}
                       </>
                     );
                   })()}

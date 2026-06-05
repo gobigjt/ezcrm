@@ -1,7 +1,7 @@
 import axios, { AxiosHeaders } from 'axios';
 
 // Dev: leave unset → `/api` (Vite proxy → backend). Production: set in `.env.production`, e.g.
-//   VITE_API_BASE_URL=https://your-api.up.railway.app/api
+//   VITE_API_BASE_URL=https://api-ezcrm.redonix.in/api
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 const LAST_TENANT_SLUG_KEY = 'last_tenant_slug';
 

@@ -1,10 +1,14 @@
 // Pull production DB data into local DB
-// Usage: node scripts/pull-prod-db.js
+// Usage: PROD_DATABASE_URL=postgresql://user:pass@host:5432/ezcrm node scripts/pull-prod-db.js
 
 require('dotenv').config();
 const { Client } = require('pg');
 
-const PROD_URL = 'postgresql://postgres:uzWoxECVboOUqVEknZfLFnmyHqkZwejM@roundhouse.proxy.rlwy.net:53348/railway';
+const PROD_URL = process.env.PROD_DATABASE_URL;
+if (!PROD_URL) {
+  console.error('Set PROD_DATABASE_URL env var to your Hostinger production database connection string.');
+  process.exit(1);
+}
 const LOCAL_URL = process.env.DATABASE_URL;
 
 async function getTables(client) {

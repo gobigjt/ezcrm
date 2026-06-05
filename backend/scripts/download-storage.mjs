@@ -78,7 +78,7 @@ async function main() {
   loadDotEnv(join(backendRoot, '.env'));
 
   const apiBase =
-    cleanEnv(process.env.API_PUBLIC_URL) || 'https://ezcrm-production.up.railway.app/api';
+    cleanEnv(process.env.API_PUBLIC_URL) || 'https://api-ezcrm.redonix.in/api';
   mkdirSync(outRoot, { recursive: true });
 
   const manifest = { downloaded: [], failed: [], at: new Date().toISOString() };

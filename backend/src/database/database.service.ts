@@ -10,7 +10,7 @@ export class DatabaseService implements OnModuleInit {
     const url = process.env.DATABASE_URL;
     if (!url?.trim()) {
       throw new Error(
-        'DATABASE_URL is not set. In production, reference your host’s Postgres URL (e.g. Railway: Variables → reference the Postgres plugin’s DATABASE_URL).',
+        "DATABASE_URL is not set. Set it in your .env (e.g. postgresql://user:pass@localhost:5432/ezcrm) or in your VPS environment variables.",
       );
     }
     this.pool = new Pool({ connectionString: url });

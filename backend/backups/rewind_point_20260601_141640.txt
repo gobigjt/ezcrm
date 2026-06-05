@@ -1,0 +1,3 @@
+﻿backup:backups/ezcrm_backup_20260601_141640.sql
+commit:5c4cf76
+created:20260601_141640

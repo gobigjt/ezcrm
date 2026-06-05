@@ -51,6 +51,7 @@ class AuthController extends GetxController {
   final userAvatarUrl = ''.obs;
   final userId = 0.obs;
   final role = ''.obs;
+  final canAssignLeads = false.obs;
   final grantedPermissions = <String>{}.obs;
   final accessToken = ''.obs;
   final refreshToken = ''.obs;
@@ -265,6 +266,7 @@ class AuthController extends GetxController {
     userAvatarUrl.value = _readAvatarUrlFromUser(user);
     userId.value = parseDynamicInt(user['id']);
     role.value = (user['role'] ?? '').toString();
+    canAssignLeads.value = user['can_assign_leads'] == true;
     accessToken.value = access;
     refreshToken.value = refresh;
     await _loadPermissionsFromServer(access);
@@ -395,6 +397,7 @@ class AuthController extends GetxController {
     isLoggedIn.value = false;
     password.value = '';
     role.value = '';
+    canAssignLeads.value = false;
     userEmail.value = '';
     userAvatarUrl.value = '';
     userId.value = 0;

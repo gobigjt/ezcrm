@@ -77,10 +77,17 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
   List<CrmLookupItem> _salesExecutiveAssignees() {
     return _assignees.where((u) {
       final role = (u['role'] ?? '').toString().trim().toLowerCase();
-      return role == 'sales executive' ||
-          role == 'sales manager' ||
-          role == 'admin' ||          
-          role == 'agent';
+      return role == 'sales executive' || role == 'agent';
+    }).map((u) => CrmLookupItem(
+      id: int.tryParse('${u['id']}') ?? 0,
+      name: (u['name'] ?? '').toString(),
+    )).where((u) => u.id > 0).toList();
+  }
+
+  List<CrmLookupItem> _salesManagerAssignees() {
+    return _assignees.where((u) {
+      final role = (u['role'] ?? '').toString().trim().toLowerCase();
+      return role == 'sales manager' || role == 'manager';
     }).map((u) => CrmLookupItem(
       id: int.tryParse('${u['id']}') ?? 0,
       name: (u['name'] ?? '').toString(),
@@ -200,7 +207,7 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
   @override
   Widget build(BuildContext context) {
     final role = _auth.role.value.trim().toLowerCase();
-    final isSalesManager = role == 'sales manager' || role == 'manager';
+    final canAssign = role == 'admin' || role == 'super admin' || _auth.canAssignLeads.value;
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border = OutlineInputBorder(
@@ -305,27 +312,25 @@ class _CrmEditLeadViewState extends State<CrmEditLeadView> {
                             onChanged: _saving ? null : (v) => setState(() => _sourceId = v),
                           ),
                           const SizedBox(height: 8),
-                          DropdownButtonFormField<int?>(
-                            value: _assignedTo,
-                            decoration: _dec(scheme, 'Assign to sales Executive', null),
-                            items: [
-                              const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                              ..._salesExecutiveAssignees()
-                                  .map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
-                            ],
-                            onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
-                          ),
-                          if (!isSalesManager) ...[
+                          if (canAssign) ...[
+                            DropdownButtonFormField<int?>(
+                              value: _assignedTo,
+                              decoration: _dec(scheme, 'Assign to Sales Executive', null),
+                              items: [
+                                const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                                ..._salesExecutiveAssignees()
+                                    .map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
+                              ],
+                              onChanged: _saving ? null : (v) => setState(() => _assignedTo = v),
+                            ),
                             const SizedBox(height: 8),
                             DropdownButtonFormField<int?>(
                               value: _assignedManagerId,
                               decoration: _dec(scheme, 'Assign Manager', null),
                               items: [
                                 const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                                ..._assignees.map((u) => DropdownMenuItem<int?>(
-                                      value: int.tryParse('${u['id']}'),
-                                      child: Text((u['name'] ?? '').toString()),
-                                    )),
+                                ..._salesManagerAssignees()
+                                    .map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name))),
                               ],
                               onChanged: _saving ? null : (v) => setState(() => _assignedManagerId = v),
                             ),

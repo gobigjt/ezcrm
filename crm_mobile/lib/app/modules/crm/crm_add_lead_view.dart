@@ -72,19 +72,17 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
     }
   }
 
-  String _assigneeLabel(Map<String, dynamic> u) {
-    final role = (u['role'] ?? '').toString().toLowerCase();
-    final name = (u['name'] ?? '').toString();
-    return role == 'manager' ? '$name (Manager)' : name;
-  }
-
   List<Map<String, dynamic>> _salesExecutiveAssignees() {
     return assignees.where((u) {
       final role = (u['role'] ?? '').toString().trim().toLowerCase();
-      return role == 'sales executive' ||
-          role == 'sales manager' ||
-          role == 'admin' ||
-          role == 'agent';
+      return role == 'sales executive' || role == 'agent';
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> _salesManagerAssignees() {
+    return assignees.where((u) {
+      final role = (u['role'] ?? '').toString().trim().toLowerCase();
+      return role == 'sales manager' || role == 'manager';
     }).toList();
   }
 
@@ -217,7 +215,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
   Widget build(BuildContext context) {
     final canManageTasks = canManageCrmFollowupTasks(Get.find<AuthController>().role.value);
     final role = _auth.role.value.trim().toLowerCase();
-    final isSalesManager = role == 'sales manager' || role == 'manager';
+    final canAssign = role == 'admin' || role == 'super admin' || _auth.canAssignLeads.value;
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final border = OutlineInputBorder(
@@ -504,6 +502,7 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                 child: Obx(
                   () {
                     final salesExecutiveAssignees = _salesExecutiveAssignees();
+                    final salesManagerAssignees = _salesManagerAssignees();
                     return Column(
                       children: [
                       DropdownButtonFormField<int?>(
@@ -525,29 +524,29 @@ class _CrmAddLeadViewState extends State<CrmAddLeadView> {
                         ],
                         onChanged: (v) => stageId.value = v,
                       ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<int?>(
-                        value: assignedTo.value,
-                        decoration: const InputDecoration(labelText: 'Assign to sales Executive'),
-                        items: [
-                          const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                          ...salesExecutiveAssignees.map((u) => DropdownMenuItem<int?>(
-                                value: int.tryParse('${u['id']}'),
-                                child: Text(_assigneeLabel(u)),
-                              )),
-                        ],
-                        onChanged: (v) => assignedTo.value = v,
-                      ),
-                      if (!isSalesManager) ...[
+                      if (canAssign) ...[
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<int?>(
+                          value: assignedTo.value,
+                          decoration: const InputDecoration(labelText: 'Assign to Sales Executive'),
+                          items: [
+                            const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                            ...salesExecutiveAssignees.map((u) => DropdownMenuItem<int?>(
+                                  value: int.tryParse('${u['id']}'),
+                                  child: Text((u['name'] ?? '').toString()),
+                                )),
+                          ],
+                          onChanged: (v) => assignedTo.value = v,
+                        ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<int?>(
                           value: assignedManagerId.value,
                           decoration: const InputDecoration(labelText: 'Assign Manager'),
                           items: [
                             const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
-                            ...assignees.map((u) => DropdownMenuItem<int?>(
+                            ...salesManagerAssignees.map((u) => DropdownMenuItem<int?>(
                                   value: int.tryParse('${u['id']}'),
-                                  child: Text(_assigneeLabel(u)),
+                                  child: Text((u['name'] ?? '').toString()),
                                 )),
                           ],
                           onChanged: (v) => assignedManagerId.value = v,

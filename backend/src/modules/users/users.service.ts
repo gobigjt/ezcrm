@@ -26,7 +26,7 @@ export class UsersService {
     const tenantId = isSuper ? null : this.requireTenantId(ctx);
     const res = await this.db.query(`
       SELECT u.id, u.name, u.email, u.role, u.is_active, u.created_at, u.avatar_url,
-             u.zone_id, u.sales_manager_id,
+             u.zone_id, u.sales_manager_id, u.can_assign_leads,
              z.name AS zone_name,
              sm.name AS sales_manager_name,
              r.id AS role_id, r.description AS role_description,
@@ -49,7 +49,7 @@ export class UsersService {
     const tenantId = isSuper ? null : this.requireTenantId(ctx);
     const res = await this.db.query(
       `SELECT u.id, u.name, u.email, u.role, u.is_active, u.created_at,
-              u.zone_id, u.sales_manager_id,
+              u.zone_id, u.sales_manager_id, u.can_assign_leads,
               z.name AS zone_name,
               sm.name AS sales_manager_name,
               r.id AS role_id
@@ -145,6 +145,7 @@ export class UsersService {
       password?: string;
       zone_id?: number | null;
       sales_manager_id?: number | null;
+      can_assign_leads?: boolean;
     },
     actorId?: number,
     actor?: any,
@@ -164,6 +165,7 @@ export class UsersService {
     let managerClearedByRoleChange = false;
     if (data.name  !== undefined) { sets.push(`name=$${i++}`);  vals.push(data.name); }
     if (data.email !== undefined) { sets.push(`email=$${i++}`); vals.push(data.email); }
+    if (data.can_assign_leads !== undefined) { sets.push(`can_assign_leads=$${i++}`); vals.push(Boolean(data.can_assign_leads)); }
     if (data.role  !== undefined) {
       const roleRes = await this.db.query('SELECT id FROM roles WHERE name=$1', [data.role]);
       if (!roleRes.rows[0]) throw new BadRequestException(`Role '${data.role}' not found`);
@@ -212,7 +214,7 @@ export class UsersService {
     vals.push(tenantId);
     const res = await this.db.query(
       `UPDATE users SET ${sets.join(',')} WHERE id=$${i} AND ($${i + 1}::integer IS NULL OR tenant_id = $${i + 1})
-       RETURNING id,name,email,role,is_active,created_at,zone_id,sales_manager_id,tenant_id`,
+       RETURNING id,name,email,role,is_active,created_at,zone_id,sales_manager_id,can_assign_leads,tenant_id`,
       vals,
     );
     if (!res.rows[0]) throw new NotFoundException('User not found');

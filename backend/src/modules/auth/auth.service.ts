@@ -129,7 +129,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email / password');
     }
     const allRes = await this.db.query(
-      `SELECT u.id,u.name,u.email,u.password,u.role,u.role_id,u.tenant_id,u.avatar_url,
+      `SELECT u.id,u.name,u.email,u.password,u.role,u.role_id,u.tenant_id,u.avatar_url,u.can_assign_leads,
               t.slug AS tenant_slug
          FROM users u
          LEFT JOIN tenants t ON t.id = u.tenant_id
@@ -203,7 +203,8 @@ export class AuthService {
          t.slug AS tenant_slug,
          u.is_active,
          u.created_at,
-         u.avatar_url
+         u.avatar_url,
+         u.can_assign_leads
        FROM users u
        LEFT JOIN tenants t ON t.id = u.tenant_id
        WHERE u.id=$1`,

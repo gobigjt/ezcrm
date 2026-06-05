@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, Matches, MaxLength, Min } from 'class-validator';
 
 export class UpdateTenantDto {
   @ApiPropertyOptional({ example: 'Acme Industries Pvt Ltd' })
@@ -18,4 +18,10 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  @ApiPropertyOptional({ example: 0, description: 'Max users allowed for this tenant. 0 means unlimited.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  max_users?: number;
 }

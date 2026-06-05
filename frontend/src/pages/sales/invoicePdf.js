@@ -9,7 +9,7 @@ function salesPdfApiSegment(kind) {
 /**
  * Ask the server to generate the PDF and return `{ url, fileName }` for download/print.
  */
-async function requestSalesPdfMeta(kind, doc) {
+async function requestSalesPdfMeta(kind, doc, template = 1) {
   if (!doc || doc.id == null) {
     throw new Error('Save the document first to print or download PDF.');
   }
@@ -18,7 +18,7 @@ async function requestSalesPdfMeta(kind, doc) {
     throw new Error('Invalid document ID for PDF.');
   }
   const segment = salesPdfApiSegment(kind);
-  const resp = await api.get(`/sales/${segment}/${id}/pdf`);
+  const resp = await api.get(`/sales/${segment}/${id}/pdf?template=${template || 1}`);
   const data = resp.data || {};
   const url = String(data.url || '').trim();
   const fileName = String(data.file_name || `${segment.slice(0, -1)}-${id}.pdf`).trim();
@@ -37,8 +37,8 @@ async function fetchPdfBlob(relativeOrAbsoluteUrl) {
 }
 
 /** Download PDF generated on the server (same layout as print). */
-export async function downloadSalesDocument(kind, doc) {
-  const { url, fileName } = await requestSalesPdfMeta(kind, doc);
+export async function downloadSalesDocument(kind, doc, template = 1) {
+  const { url, fileName } = await requestSalesPdfMeta(kind, doc, template);
   const blob = await fetchPdfBlob(url);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -52,8 +52,8 @@ export async function downloadSalesDocument(kind, doc) {
 /**
  * Open the server-generated PDF and trigger the browser print dialog.
  */
-export async function printSalesDocument(kind, doc) {
-  const { url } = await requestSalesPdfMeta(kind, doc);
+export async function printSalesDocument(kind, doc, template = 1) {
+  const { url } = await requestSalesPdfMeta(kind, doc, template);
   const blob = await fetchPdfBlob(url);
   const objectUrl = URL.createObjectURL(blob);
 

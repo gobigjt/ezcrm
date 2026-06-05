@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -54,5 +54,10 @@ export class TenantsController {
   @Patch(':id/toggle-status')
   toggleStatus(@CurrentUser() u: any, @Param('id') id: string) {
     return this.svc.toggleTenantStatus(Number(id), Number(u?.id || 0) || undefined);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() u: any, @Param('id') id: string) {
+    return this.svc.deleteTenant(Number(id), Number(u?.id || 0) || undefined);
   }
 }

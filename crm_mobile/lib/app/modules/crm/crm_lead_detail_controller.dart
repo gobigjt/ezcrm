@@ -18,6 +18,9 @@ class CrmLeadDetailController extends GetxController {
   final activities = <CrmActivityRow>[].obs;
   final followups = <CrmFollowupRow>[].obs;
   final stages = <CrmLookupItem>[].obs;
+  final assignees = <Map<String, dynamic>>[].obs;
+  final assignSelectedTo = Rxn<int>();
+  final assignSelectedManagerId = Rxn<int>();
 
   @override
   void onInit() {
@@ -33,9 +36,13 @@ class CrmLeadDetailController extends GetxController {
       final actRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/$leadId/activities');
       final folRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/$leadId/followups');
       final stagesRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/stages');
-      lead.value = CrmLead.fromJson(
+      final assignRes = await _auth.authorizedRequest(method: 'GET', path: '/crm/leads/assignees');
+      final l = CrmLead.fromJson(
         Map<String, dynamic>.from((leadRes as Map)['lead'] as Map),
       );
+      lead.value = l;
+      assignSelectedTo.value = l.assignedTo;
+      assignSelectedManagerId.value = l.assignedManagerId;
       activities.assignAll(
         (actRes as List).map((e) => CrmActivityRow.fromJson(Map<String, dynamic>.from(e as Map))),
       );
@@ -45,10 +52,30 @@ class CrmLeadDetailController extends GetxController {
       stages.assignAll(
         (stagesRes as List).map((e) => CrmLookupItem.fromJson(Map<String, dynamic>.from(e as Map))),
       );
+      assignees.assignAll(
+        (assignRes as List).map((e) => Map<String, dynamic>.from(e as Map)),
+      );
     } catch (e) {
       errorMessage.value = userFriendlyError(e);
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  Future<void> assignLead() async {
+    isSubmitting.value = true;
+    try {
+      await _auth.authorizedRequest(
+        method: 'PATCH',
+        path: '/crm/leads/$leadId',
+        body: {
+          'assigned_to': assignSelectedTo.value,
+          'assigned_manager_id': assignSelectedManagerId.value,
+        },
+      );
+      await load();
+    } finally {
+      isSubmitting.value = false;
     }
   }
 

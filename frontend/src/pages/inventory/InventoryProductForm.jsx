@@ -17,6 +17,7 @@ const EMPTY = {
   sale_price: '',
   gst_rate: '0',
   low_stock_alert: '0',
+  weight: '0',
 };
 
 export default function InventoryProductForm() {
@@ -47,6 +48,7 @@ export default function InventoryProductForm() {
     if (key === 'sale_price') return v !== '' && (Number.isNaN(Number(v)) || Number(v) < 0) ? 'Sales price must be 0 or more.' : '';
     if (key === 'gst_rate') return v !== '' && (Number.isNaN(Number(v)) || Number(v) < 0 || Number(v) > 100) ? 'GST must be between 0 and 100.' : '';
     if (key === 'low_stock_alert') return v !== '' && (!Number.isInteger(Number(v)) || Number(v) < 0) ? 'Low stock alert must be a whole number 0 or more.' : '';
+    if (key === 'weight') return v !== '' && (Number.isNaN(Number(v)) || Number(v) < 0) ? 'Weight must be 0 or more.' : '';
     if (key === 'image') {
       if (!nextImage) return '';
       if (!String(nextImage.type || '').startsWith('image/')) return 'Choose an image file.';
@@ -81,6 +83,7 @@ export default function InventoryProductForm() {
         sale_price: p.sale_price ?? '',
         gst_rate: p.gst_rate ?? '0',
         low_stock_alert: p.low_stock_alert ?? '0',
+        weight: p.weight ?? '0',
       });
     }).catch(() => {});
   }, [id, isEdit]);
@@ -136,6 +139,7 @@ export default function InventoryProductForm() {
         sale_price: String(form.sale_price || '').trim(),
         gst_rate: String(form.gst_rate || '').trim(),
         low_stock_alert: String(form.low_stock_alert || '').trim(),
+        weight: String(form.weight || '0').trim(),
       };
       let product;
       if (isEdit) {
@@ -224,6 +228,10 @@ export default function InventoryProductForm() {
           <Field label="Low Stock Alert">
             <input className={inputErrorCls('low_stock_alert')} type="number" value={form.low_stock_alert} onChange={set('low_stock_alert')} />
             {errors.low_stock_alert ? <div className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.low_stock_alert}</div> : null}
+          </Field>
+          <Field label="Weight (kg)">
+            <input className={inputErrorCls('weight')} type="number" min="0" step="0.001" value={form.weight} onChange={set('weight')} placeholder="0.000" />
+            {errors.weight ? <div className="mt-1 text-xs text-red-600 dark:text-red-400">{errors.weight}</div> : null}
           </Field>
         </div>
         <Field label="Image">

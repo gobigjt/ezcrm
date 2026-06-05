@@ -57,17 +57,20 @@ export default function CRMLeadFormPage() {
   const [form, setForm] = useState({ ...EMPTY });
   const [loading, setLoading] = useState(false);
   const roleName = String(user?.role || '').toLowerCase();
-  const isSalesManager = roleName === 'sales manager' || roleName === 'manager';
+  const canAssignLeads = roleName === 'admin' || roleName === 'super admin' || user?.can_assign_leads === true;
   const salesExecutiveUsers = useMemo(
     () =>
       users.filter((u) => {
         const r = String(u?.role || '').trim().toLowerCase();
-        return (
-          r === 'sales executive' ||
-          r === 'sales manager' ||
-          r === 'admin' ||
-          r === 'agent'
-        );
+        return r === 'sales executive' || r === 'agent';
+      }),
+    [users],
+  );
+  const salesManagerUsers = useMemo(
+    () =>
+      users.filter((u) => {
+        const r = String(u?.role || '').trim().toLowerCase();
+        return r === 'sales manager' || r === 'manager';
       }),
     [users],
   );
@@ -183,22 +186,26 @@ export default function CRMLeadFormPage() {
           <div className="space-y-5">
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Assignment</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Assign to sales Executive">
-                  <select className={selectCls} value={form.assigned_to} onChange={set('assigned_to')}>
-                    <option value="">Unassigned</option>
-                    {salesExecutiveUsers.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
-                  </select>
-                </Field>
-                {!isSalesManager && (
+              {canAssignLeads ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Assign to sales Executive">
+                    <select className={selectCls} value={form.assigned_to} onChange={set('assigned_to')}>
+                      <option value="">Unassigned</option>
+                      {salesExecutiveUsers.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                    </select>
+                  </Field>
                   <Field label="Assign Manager">
                     <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
                       <option value="">Unassigned</option>
-                      {users.map((u) => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
+                      {salesManagerUsers.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
                     </select>
                   </Field>
-                )}
-              </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 dark:text-slate-500 italic">
+                  You do not have permission to assign leads.
+                </p>
+              )}
             </section>
 
             <section className="space-y-3 pt-1 border-t border-slate-100 dark:border-slate-700/50">

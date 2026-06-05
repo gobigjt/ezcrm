@@ -346,6 +346,254 @@ function hsnSummaryRows(doc, kind) {
   return [...byHsn.values()];
 }
 
+/** Template 2 — Modern Branded layout with full-width colored header. */
+function buildTemplate2Html(d: {
+  doc: any;
+  company: Record<string, unknown>;
+  logoSrc: string;
+  kind: string;
+  title: string;
+  docNo: string;
+  metaLeft: string[][];
+  metaRight: string[][];
+  visibleItems: any[];
+  itemRowsHtml: string;
+  taxItemRowsHtml: string;
+  taxColCount: number;
+  interstate: boolean;
+  t: { subtotal: number; cgst: number; sgst: number; igst: number; total: number; balance: number | null };
+  totalTax: number;
+  subTotal: number;
+  terms: string;
+  bankDetails: string;
+  billingAddress: string;
+  deliveryAddress: string;
+  totalWeightKg: number;
+  fmtKg: (v: number) => string;
+  includeSheetFooter: boolean;
+  rasterLayout: boolean;
+}) {
+  const {
+    doc, company, logoSrc, kind, title, docNo,
+    metaLeft, metaRight, visibleItems, taxColCount, interstate,
+    t, totalTax, subTotal, terms, bankDetails,
+    billingAddress, deliveryAddress, totalWeightKg, fmtKg,
+    includeSheetFooter, rasterLayout,
+  } = d;
+
+  // Template 2 item rows: alternating row background, black borders
+  const t2ItemRowsHtml = visibleItems.map((it, idx) => {
+    const gstRate = Number(it.gst_rate || 0);
+    const lineWt = Number(it.line_weight || 0);
+    const rowBg = idx % 2 === 0 ? '#fff' : '#f0f9ff';
+    return `
+    <tr style="background:${rowBg};border-top:1px solid #000">
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;border-top:1px solid #000;width:28px">${idx + 1}</td>
+      <td style="padding:5px 8px 10px;vertical-align:middle;border-right:1px solid #000;border-top:1px solid #000"><strong>${escapeHtml(lineItemProductLabel(it) || String(it.description ?? it.product_name ?? '').trim() || '—')}</strong></td>
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;border-top:1px solid #000;width:72px">${escapeHtml(it.product_hsn_code || it.hsn_code || '—')}</td>
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;border-top:1px solid #000;width:55px">${Number(it.quantity ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })} Nos</td>
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;border-top:1px solid #000;width:65px">${fmtKg(lineWt)}</td>
+      <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;border-right:1px solid #000;border-top:1px solid #000;width:85px;white-space:nowrap">&#8377; ${asMoney(it.unit_price)}</td>
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;border-top:1px solid #000;width:65px">${gstRate > 0 ? `${gstRate.toLocaleString('en-IN', { maximumFractionDigits: 2 })}%` : '—'}</td>
+      <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;border-top:1px solid #000;width:90px;white-space:nowrap">&#8377; ${asMoney(it.total)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="8" style="padding:10px;text-align:center;color:#888;border-top:1px solid #000">No line items</td></tr>`;
+
+  // Template 2 tax rows
+  const t2TaxRowsHtml = d.taxItemRowsHtml;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>${escapeHtml(docNo)} - ${escapeHtml(title)}</title>
+  <style>
+    @page { size:A4; margin:8mm; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:Arial,Helvetica,sans-serif; font-size:11px; color:#111; background:#fff; }
+    ${rasterLayout ? 'body{max-width:794px;margin:0 auto;padding:6px 10px 32px;}' : ''}
+    strong { font-weight:700; }
+    .sheet-footer { margin-top:5px; left: 12mm; right: 12mm; padding: 0 12px; text-align:center; font-size:9px; color:#666; white-space:normal; line-height:1.3; width:100%; }
+    .sheet-footer div { display:block; }
+    @media print {
+      body { padding-bottom:14mm; }
+      .sheet-footer {
+        position: fixed;
+        left: 8mm;
+        right: 8mm;
+        bottom: 6mm;
+        margin-top: 0;
+        padding:0 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER: Full-width #0077B6 bar — logo left, company right in white -->
+<table width="100%" style="border-collapse:collapse;background:#0077B6;color:#fff">
+  <tr>
+    <td style="padding:12px 14px;width:50%;vertical-align:middle">
+      ${logoSrc
+        ? `<img src="${escapeHtml(logoSrc)}" alt="" style="max-width:120px;max-height:70px;object-fit:contain;display:block"/>`
+        : `<div style="font-size:20px;font-weight:700;letter-spacing:0.02em">${escapeHtml(company.company_name as string || 'Company')}</div>`
+      }
+    </td>
+    <td style="padding:12px 14px;width:50%;vertical-align:top;text-align:right">
+      <div style="font-size:16px;font-weight:700">${escapeHtml(company.company_name as string || 'Company')}</div>
+      <div style="font-size:9px;line-height:1.6;margin-top:3px;opacity:0.9">
+        ${topAddressTwoLines(company.address).map((ln) => escapeHtml(ln)).join('<br/>')}
+        ${company.gstin ? `<br/>GSTIN: ${escapeHtml(company.gstin as string)}` : ''}
+      </div>
+    </td>
+  </tr>
+</table>
+
+<!-- DOCUMENT TITLE STRIP in #0096C7 -->
+<div style="background:#0096C7;color:#fff;text-align:center;padding:7px;font-size:15px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">
+  ${kind === 'quotation' ? 'Quotation' : kind === 'order' ? 'Sales Order' : totalTax > 0 ? 'Tax Invoice' : 'Invoice'}
+</div>
+
+<!-- META INFO: two column table, black borders -->
+<table width="100%" style="border-collapse:collapse;border:1px solid #000;margin-top:0">
+  <tr>
+    <td style="padding:8px 12px;width:50%;vertical-align:top;border-right:1px solid #000">
+      <table style="border-collapse:collapse;width:100%">
+        <tbody>
+          ${metaLeft.map(([k, v]) => `<tr>
+            <td style="padding:2px 0;white-space:nowrap;width:120px"><strong>${k}</strong></td>
+            <td style="padding:2px 0">: ${v}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </td>
+    <td style="padding:8px 12px;width:50%;vertical-align:top">
+      <table style="border-collapse:collapse;width:100%">
+        <tbody>
+          ${metaRight.map(([k, v]) => `<tr>
+            <td style="padding:2px 0;white-space:nowrap;width:110px"><strong>${k}</strong></td>
+            <td style="padding:2px 0">: ${v}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<!-- BILLING / DELIVERY: side by side, #00B4D8 header bars -->
+<table width="100%" style="border-collapse:collapse;border:1px solid #000;border-top:0;margin-top:0">
+  <tr>
+    <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #000">
+      <div style="background:#00B4D8;color:#fff;font-weight:700;padding:5px 8px;font-size:10px">Billing Address</div>
+      <div style="padding:8px 10px;line-height:1.6">
+        <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
+        ${escapeHtml(billingAddress).replace(/\n/g, '<br/>')}
+        ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
+      </div>
+    </td>
+    <td style="width:50%;vertical-align:top;padding:0">
+      <div style="background:#00B4D8;color:#fff;font-weight:700;padding:5px 8px;font-size:10px">Delivery Address</div>
+      <div style="padding:8px 10px;line-height:1.6">
+        <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
+        ${escapeHtml(deliveryAddress).replace(/\n/g, '<br/>')}
+        ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
+      </div>
+    </td>
+  </tr>
+</table>
+
+<!-- LINE ITEMS TABLE: #0077B6 header, black outlines -->
+<table width="100%" style="border-collapse:collapse;font-size:10px;border:1px solid #000;border-top:0">
+  <thead>
+    <tr style="background:#0077B6;color:#fff">
+      <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;width:28px">#</th>
+      <th style="padding:5px 8px 10px;text-align:left;vertical-align:middle;border-right:1px solid #000">Item&amp;Description</th>
+      <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;width:72px">HSN Code</th>
+      <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;width:55px">Qty</th>
+      <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;width:65px">Weight</th>
+      <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;border-right:1px solid #000;width:85px">Rate</th>
+      <th style="padding:5px 8px 10px;text-align:center;vertical-align:middle;border-right:1px solid #000;width:65px">GST %</th>
+      <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;width:90px">Amount</th>
+    </tr>
+  </thead>
+  <tbody>${t2ItemRowsHtml}</tbody>
+</table>
+
+<!-- TAX SUMMARY: #0096C7 header, black outlines -->
+<table width="100%" style="border-collapse:collapse;font-size:10px;border:1px solid #000;border-top:0">
+  <thead>
+    <tr style="background:#0096C7;color:#fff">
+      ${interstate
+        ? `<th style="padding:5px 8px 10px;text-align:left;vertical-align:middle;border-right:1px solid #000;width:100px">HSN/SAC</th>
+           <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;border-right:1px solid #000">Taxable Amount</th>
+           <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle">IGST</th>`
+        : `<th style="padding:5px 8px 10px;text-align:left;vertical-align:middle;border-right:1px solid #000;width:100px">HSN/SAC</th>
+           <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;border-right:1px solid #000">Taxable Amount</th>
+           <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;border-right:1px solid #000;width:130px">CGST</th>
+           <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;width:130px">SGST</th>`}
+    </tr>
+  </thead>
+  <tbody>${t2TaxRowsHtml}</tbody>
+</table>
+
+<!-- TOTALS + BANK DETAILS side by side -->
+<table width="100%" style="border-collapse:collapse;border:1px solid #000;border-top:0">
+  <tr>
+    <td style="width:55%;vertical-align:top;padding:8px 12px;border-right:1px solid #000">
+      <div style="font-weight:700;font-size:10px;color:#0077B6;margin-bottom:4px">Total in Words</div>
+      <div style="font-size:11px"><strong>${escapeHtml(amountInWordsINR(t.total))}</strong></div>
+      ${terms ? `<div style="margin-top:8px;font-size:10px;line-height:1.6"><strong>Terms And Conditions:</strong><br/><span style="white-space:pre-wrap">${escapeHtml(terms)}</span></div>` : ''}
+      ${bankDetails ? `<div style="margin-top:8px;font-size:10px;line-height:1.6"><strong>Bank Details:</strong><br/><span style="white-space:pre-wrap">${escapeHtml(bankDetails)}</span></div>` : ''}
+    </td>
+    <td style="width:45%;vertical-align:top;padding:0">
+      <table width="100%" style="border-collapse:collapse;font-size:11px">
+        <tr>
+          <td style="padding:5px 12px 10px;border-bottom:1px solid #000">Sub Total</td>
+          <td style="padding:5px 12px 10px;text-align:right;border-bottom:1px solid #000;white-space:nowrap">&#8377; ${asMoney(subTotal)}</td>
+        </tr>
+        ${t.cgst > 0 ? `<tr>
+          <td style="padding:5px 12px;border-bottom:1px solid #000">CGST</td>
+          <td style="padding:5px 12px;text-align:right;border-bottom:1px solid #000;white-space:nowrap">&#8377; ${asMoney(t.cgst)}</td>
+        </tr>` : ''}
+        ${t.sgst > 0 ? `<tr>
+          <td style="padding:5px 12px;border-bottom:1px solid #000">SGST</td>
+          <td style="padding:5px 12px;text-align:right;border-bottom:1px solid #000;white-space:nowrap">&#8377; ${asMoney(t.sgst)}</td>
+        </tr>` : ''}
+        ${t.igst > 0 ? `<tr>
+          <td style="padding:5px 12px;border-bottom:1px solid #000">IGST</td>
+          <td style="padding:5px 12px;text-align:right;border-bottom:1px solid #000;white-space:nowrap">&#8377; ${asMoney(t.igst)}</td>
+        </tr>` : ''}
+        ${totalTax > 0 ? `<tr>
+          <td style="padding:5px 12px 10px;border-bottom:1px solid #000">Total Tax Charges</td>
+          <td style="padding:5px 12px 10px;text-align:right;border-bottom:1px solid #000;white-space:nowrap">&#8377; ${asMoney(totalTax)}</td>
+        </tr>` : ''}
+        <tr style="background:#0077B6;color:#fff;font-weight:700">
+          <td style="padding:6px 12px">Total</td>
+          <td style="padding:6px 12px;text-align:right;white-space:nowrap">&#8377; ${asMoney(t.total)}</td>
+        </tr>
+        ${totalWeightKg > 0 ? `<tr>
+          <td style="padding:4px 12px 8px;color:#555;border-top:1px solid #000">Total Weight</td>
+          <td style="padding:4px 12px 8px;text-align:right;color:#555;border-top:1px solid #000;white-space:nowrap">${fmtKg(totalWeightKg)}</td>
+        </tr>` : ''}
+        ${t.balance != null ? `<tr>
+          <td style="padding:5px 12px 10px;color:#c00;border-top:1px solid #000">Balance Due</td>
+          <td style="padding:5px 12px 10px;text-align:right;color:#c00;border-top:1px solid #000;white-space:nowrap">&#8377; ${asMoney(t.balance)}</td>
+        </tr>` : ''}
+      </table>
+    </td>
+  </tr>
+</table>
+
+<!-- FOOTER -->
+<div style="background:#0077B6;color:#fff;text-align:center;padding:6px;font-size:10px;margin-top:0">
+  For ${escapeHtml(company.company_name as string || 'Company')}
+</div>
+
+${includeSheetFooter ? `<div class="sheet-footer">${invoiceFooterHtml(company)}</div>` : ''}
+</body>
+</html>`;
+}
+
 /**
  * @param {object} doc Invoice / quotation / order with items (and payments for invoices)
  * @param {object} company Company settings row
@@ -360,7 +608,7 @@ function buildSalesDocumentHtml(
   company: Record<string, unknown>,
   logoDataUrl: string | null = null,
   kind: 'invoice' | 'quotation' | 'order' = 'invoice',
-  opts: { includeSheetFooter?: boolean; rasterLayout?: boolean } = {},
+  opts: { includeSheetFooter?: boolean; rasterLayout?: boolean; template?: number } = {},
 ) {
   const includeSheetFooter = opts.includeSheetFooter !== false;
   const rasterLayout = Boolean(opts.rasterLayout);
@@ -420,25 +668,34 @@ function buildSalesDocumentHtml(
   const terms = stripBankDetailsFromTerms([doc.notes || '', company.payment_terms || ''].filter(Boolean).join('\n'));
 
   // shared border shorthand helpers (inline only — no global CSS collapse conflicts)
-  const SB = 'border:1px solid #cfd5dd';   // solid all sides
-  const BR = 'border-right:1px solid #cfd5dd';
-  const BT = 'border-top:1px solid #cfd5dd';
-  const BD = 'border-bottom:1px solid #cfd5dd';
+  const SB = 'border:1px solid #000';   // solid all sides
+  const BR = 'border-right:1px solid #000';
+  const BT = 'border-top:1px solid #000';
+  const BD = 'border-bottom:1px solid #000';
 
   // items rows — each cell gets right border except last column
+  const totalWeightKg = visibleItems.reduce((sum, it) => sum + Number(it.line_weight || 0), 0);
+  const fmtKg = (v: number): string => {
+    if (v <= 0) return '—';
+    if (v < 1) return `${(v * 1000).toFixed(0)} g`;
+    if (v < 1000) return `${v.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`;
+    return `${(v / 1000).toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} t`;
+  };
   const itemRowsHtml = visibleItems.map((it, idx) => {
     const gstRate = Number(it.gst_rate || 0);
+    const lineWt = Number(it.line_weight || 0);
     return `
     <tr>
       <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:28px">${idx + 1}</td>
       <td style="padding:5px 8px 10px;vertical-align:middle;${BR};${BT}"><strong>${escapeHtml(lineItemProductLabel(it) || String(it.description ?? it.product_name ?? '').trim() || '—')}</strong></td>
       <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:72px">${escapeHtml(it.product_hsn_code || it.hsn_code || '—')}</td>
       <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:55px">${Number(it.quantity ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })} Nos</td>
+      <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:65px">${fmtKg(lineWt)}</td>
       <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};${BT};width:85px;white-space:nowrap">&#8377; ${asMoney(it.unit_price)}</td>
       <td style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};${BT};width:65px">${gstRate > 0 ? `${gstRate.toLocaleString('en-IN', { maximumFractionDigits: 2 })}%` : '—'}</td>
       <td style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BT};width:90px;white-space:nowrap">&#8377; ${asMoney(it.total)}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="7" style="padding:10px;text-align:center;color:#888;${BT}">No line items</td></tr>`;
+  }).join('') || `<tr><td colspan="8" style="padding:10px;text-align:center;color:#888;${BT}">No line items</td></tr>`;
 
   // tax rows
   const taxItemRowsHtml = taxSummaryRows.map((r) => interstate
@@ -455,6 +712,16 @@ function buildSalesDocumentHtml(
        </tr>`
   ).join('') || `<tr><td colspan="${taxColCount}" style="padding:6px;text-align:center;color:#888;${BT}">—</td></tr>`;
 
+  if ((opts.template || 1) === 2) {
+    return buildTemplate2Html({
+      doc, company, logoSrc, kind, title, docNo,
+      metaLeft, metaRight, visibleItems, itemRowsHtml, taxItemRowsHtml,
+      taxColCount, interstate, t, totalTax, subTotal, terms, bankDetails,
+      billingAddress, deliveryAddress, totalWeightKg, fmtKg,
+      includeSheetFooter, rasterLayout,
+    });
+  }
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -466,8 +733,8 @@ function buildSalesDocumentHtml(
     body { font-family:Arial,Helvetica,sans-serif; font-size:11px; color:#111; background:#fff; }
     ${rasterLayout ? 'body{max-width:794px;margin:0 auto;padding:6px 10px 32px;}' : ''}
     strong { font-weight:700; }
-    .wrap { border:1px solid #cfd5dd; width:100%; }
-    .sec  { border-top:1px solid #cfd5dd; width:100%; }
+    .wrap { border:1px solid #000; width:100%; }
+    .sec  { border-top:1px solid #000; width:100%; }
     .sheet-footer { margin-top:5px; left: 12mm; right: 12mm; padding: 0 12px; text-align:center; font-size:9px; color:#666; white-space:normal; line-height:1.3; width:100%; }
     .sheet-footer div { display:block; }
     @media print {
@@ -503,7 +770,7 @@ function buildSalesDocumentHtml(
   </table>
 
   <!-- ① b DOCUMENT TITLE -->
-  <div class="sec" style="text-align:center;padding:6px 12px 12px;font-size:14px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase">
+  <div class="sec" style="text-align:center;padding:6px 12px 12px;font-size:14px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;background:#0077B6;color:#fff">
     ${kind === 'quotation' ? 'Quotation' : kind === 'order' ? 'Sales Order' : totalTax > 0 ? 'Tax Invoice' : 'Invoice'}
   </div>
 
@@ -520,7 +787,7 @@ function buildSalesDocumentHtml(
           </tbody>
         </table>
       </td>
-      <td style="padding:8px 12px;width:50%;vertical-align:top;border-left:1px solid #cfd5dd">
+      <td style="padding:8px 12px;width:50%;vertical-align:top;border-left:1px solid #000">
         <table width="100%" style="border-collapse:collapse">
           <tbody>
             ${metaRight.map(([k,v]) => `<tr>
@@ -536,8 +803,8 @@ function buildSalesDocumentHtml(
   <!-- ③ BILLING / DELIVERY ADDRESSES -->
   <table width="100%" style="border-collapse:collapse" class="sec">
     <tr>
-      <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #cfd5dd; ">
-        <div style="background:#eaeaea;font-weight:700;padding:4px 4px 10px 4px;border-bottom:1px solid #ccc;font-size:11px">Billing Address</div>
+      <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #000; ">
+        <div style="background:#0096C7;color:#fff;font-weight:700;padding:4px 4px 10px 4px;border-bottom:1px solid #000;font-size:11px">Billing Address</div>
         <div style="padding:7px 10px 18px;font-size:11px;line-height:1.6">
           <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
           ${escapeHtml(billingAddress).replace(/\n/g, '<br/>')}
@@ -545,7 +812,7 @@ function buildSalesDocumentHtml(
         </div>
       </td>
       <td style="width:50%;vertical-align:top;padding:0;">
-        <div style="background:#eaeaea;font-weight:700;padding:4px 4px 10px 4px;border-bottom:1px solid #ccc;font-size:11px">Delivery Address</div>
+        <div style="background:#0096C7;color:#fff;font-weight:700;padding:4px 4px 10px 4px;border-bottom:1px solid #000;font-size:11px">Delivery Address</div>
         <div style="padding:7px 10px 18px;font-size:11px;line-height:1.6">
           <strong>${escapeHtml(doc.customer_name || '—')}</strong><br/>
           ${escapeHtml(deliveryAddress).replace(/\n/g, '<br/>')}
@@ -558,11 +825,12 @@ function buildSalesDocumentHtml(
   <!-- ④ LINE ITEMS -->
   <table width="100%" style="border-collapse:collapse;font-size:10px; min-height: 100px;" class="sec">
     <thead>
-      <tr style="background:#eaeaea">
+      <tr style="background:#0077B6;color:#fff">
         <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:28px">#</th>
         <th style="padding:5px 8px 10px;text-align:left;vertical-align:middle;${BR}">Item&amp;Description</th>
         <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:72px">HSN Code</th>
         <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:55px">Qty</th>
+        <th style="padding:5px 4px 10px;text-align:center;vertical-align:middle;${BR};width:65px">Weight</th>
         <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR};width:85px">Rate</th>
         <th style="padding:5px 8px 10px;text-align:center;vertical-align:middle;${BR};width:65px">GST %</th>
         <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;width:90px">Amount</th>
@@ -574,7 +842,7 @@ function buildSalesDocumentHtml(
   <!-- ⑤ HSN / TAX SUMMARY -->
   <table width="100%" style="border-collapse:collapse;font-size:10px margin-top: 10px;" class="sec">
     <thead>
-      <tr style="background:#eaeaea">
+      <tr style="background:#0077B6;color:#fff">
         ${interstate
           ? `<th style="padding:5px 8px 10px;text-align:left;vertical-align:middle;${BR};width:100px">HSN/SAC</th>
              <th style="padding:5px 8px 10px;text-align:right;vertical-align:middle;${BR}">Taxable Amount</th>
@@ -591,7 +859,7 @@ function buildSalesDocumentHtml(
   <!-- ⑥ TOTAL IN WORDS + TOTALS -->
   <table width="100%" style="border-collapse:collapse" class="sec">
     <tr>
-      <td style="padding:8px 12px;vertical-align:top;border-right:1px solid #cfd5dd">
+      <td style="padding:8px 12px;vertical-align:top;border-right:1px solid #000">
         <div style="font-weight:700;margin-bottom:5px;font-size:11px">Total in Words</div>
         <div style="font-size:11px"><strong>${escapeHtml(amountInWordsINR(t.total))}</strong></div>
       </td>
@@ -617,13 +885,17 @@ function buildSalesDocumentHtml(
             <td style="padding:5px 12px 10px;${BD}">Total Tax Charges</td>
             <td style="padding:5px 12px 10px;text-align:right;${BD};white-space:nowrap">&#8377; ${asMoney(totalTax)}</td>
           </tr>` : ''}
-          <tr>
-            <td style="padding:6px 12px 12px;font-weight:700;border-top:2px solid #cfd5dd"><strong>Total</strong></td>
-            <td style="padding:6px 12px 12px;text-align:right;font-weight:700;border-top:2px solid #cfd5dd;white-space:nowrap"><strong>&#8377; ${asMoney(t.total)}</strong></td>
+          <tr style="background:#0077B6;color:#fff">
+            <td style="padding:6px 12px 12px;font-weight:700;border-top:2px solid #000"><strong>Total</strong></td>
+            <td style="padding:6px 12px 12px;text-align:right;font-weight:700;border-top:2px solid #000;white-space:nowrap"><strong>&#8377; ${asMoney(t.total)}</strong></td>
           </tr>
+          ${totalWeightKg > 0 ? `<tr>
+            <td style="padding:4px 12px 8px;color:#555;border-top:1px solid #eee">Total Weight</td>
+            <td style="padding:4px 12px 8px;text-align:right;color:#555;border-top:1px solid #eee;white-space:nowrap">${fmtKg(totalWeightKg)}</td>
+          </tr>` : ''}
           ${t.balance != null ? `<tr>
-            <td style="padding:5px 12px 10px;color:#c00;border-top:1px solid #cfd5dd">Balance Due</td>
-            <td style="padding:5px 12px 10px;text-align:right;color:#c00;border-top:1px solid #cfd5dd;white-space:nowrap">&#8377; ${asMoney(t.balance)}</td>
+            <td style="padding:5px 12px 10px;color:#c00;border-top:1px solid #000">Balance Due</td>
+            <td style="padding:5px 12px 10px;text-align:right;color:#c00;border-top:1px solid #000;white-space:nowrap">&#8377; ${asMoney(t.balance)}</td>
           </tr>` : ''}
         </table>
       </td>
@@ -634,7 +906,7 @@ function buildSalesDocumentHtml(
   ${(terms || bankDetails) ? `
   <table width="100%" style="border-collapse:collapse" class="sec">
     <tr>
-      <td style="width:50%;vertical-align:top;padding:8px 12px 12px;border-right:1px solid #cfd5dd;font-size:10px;line-height:1.6">
+      <td style="width:50%;vertical-align:top;padding:8px 12px 12px;border-right:1px solid #000;font-size:10px;line-height:1.6">
         <strong>Terms And Conditions:</strong><br/>
         <span style="white-space:pre-wrap">${escapeHtml(terms || '—')}</span>
       </td>

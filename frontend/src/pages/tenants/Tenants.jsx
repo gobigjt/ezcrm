@@ -44,7 +44,7 @@ export default function Tenants() {
   const [page, setPage] = useState(initialPage);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ name: '', slug: '', is_active: true });
+  const [form, setForm] = useState({ name: '', slug: '', is_active: true, password: '', max_users: 0 });
 
   const isSuperAdmin = useMemo(
     () => String(user?.role || '').trim().toLowerCase() === 'super admin',
@@ -113,7 +113,7 @@ export default function Tenants() {
   }, [page, totalPages]);
 
   const openCreate = () => {
-    setForm({ name: '', slug: '', is_active: true });
+    setForm({ name: '', slug: '', is_active: true, password: '', max_users: 0 });
     setModal({ mode: 'create', id: null });
   };
 
@@ -122,6 +122,7 @@ export default function Tenants() {
       name: String(row?.name || ''),
       slug: String(row?.slug || ''),
       is_active: Boolean(row?.is_active),
+      max_users: Number(row?.max_users || 0),
     });
     setModal({ mode: 'edit', id: row.id });
   };
@@ -136,21 +137,30 @@ export default function Tenants() {
     if (saving || !modal) return;
     setSaving(true);
     try {
-      const payload = {
-        name: String(form.name || '').trim(),
-        slug: String(form.slug || '').trim() || undefined,
-        is_active: Boolean(form.is_active),
-      };
-      if (!payload.name) {
+      const baseName = String(form.name || '').trim();
+      if (!baseName) {
         show('Tenant name is required', 'error');
         setSaving(false);
         return;
       }
 
       if (modal.mode === 'create') {
+        const payload = {
+          name: baseName,
+          slug: String(form.slug || '').trim() || undefined,
+          is_active: Boolean(form.is_active),
+          admin_password: form.password || undefined,
+          max_users: Number(form.max_users || 0),
+        };
         await api.post('/tenants', payload);
         show('Tenant created', 'success');
       } else {
+        const payload = {
+          name: baseName,
+          slug: String(form.slug || '').trim() || undefined,
+          is_active: Boolean(form.is_active),
+          max_users: Number(form.max_users || 0),
+        };
         await api.patch(`/tenants/${modal.id}`, payload);
         show('Tenant updated', 'success');
       }
@@ -181,6 +191,23 @@ export default function Tenants() {
     }
   };
 
+  const deleteTenant = async (row) => {
+    const ok = await promptDestructive({
+      title: 'Delete tenant',
+      message: `Permanently delete "${row.name}" and all its users?`,
+      confirmText: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/tenants/${row.id}`);
+      show('Tenant deleted', 'success');
+      await load();
+    } catch (err) {
+      show(apiErrorMessage(err, 'Could not delete tenant'), 'error');
+    }
+  };
+
   if (!isSuperAdmin) {
     return <Navigate to="/" replace />;
   }
@@ -200,12 +227,15 @@ export default function Tenants() {
       <div className="text-xs">
         <p className="font-semibold text-slate-700 dark:text-slate-200">{Number(r.users_total || 0)} total</p>
         <p className="text-slate-500 dark:text-slate-400">{Number(r.users_active || 0)} active</p>
+        <p className="text-slate-400 dark:text-slate-500">
+          Max: {r.max_users === 0 || r.max_users == null ? 'Unlimited' : r.max_users}
+        </p>
       </div>
     ),
     <span className="text-xs text-slate-600 dark:text-slate-300">{fmtDate(r.created_at)}</span>,
     <span className="text-xs text-slate-600 dark:text-slate-300">{fmtDate(r.updated_at)}</span>,
     (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"
           onClick={() => openEdit(r)}
@@ -218,11 +248,18 @@ export default function Tenants() {
           onClick={() => toggleStatus(r)}
           className={`text-xs font-semibold px-2.5 py-1 rounded-lg ${
             r.is_active
-              ? 'bg-red-600 text-white hover:bg-red-700'
+              ? 'bg-amber-500 text-white hover:bg-amber-600'
               : 'bg-emerald-600 text-white hover:bg-emerald-700'
           }`}
         >
           {r.is_active ? 'Deactivate' : 'Activate'}
+        </button>
+        <button
+          type="button"
+          onClick={() => deleteTenant(r)}
+          className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-600 text-white hover:bg-red-700"
+        >
+          Delete
         </button>
       </div>
     ),
@@ -309,6 +346,30 @@ export default function Tenants() {
                 value={form.slug}
                 onChange={(e) => setForm((s) => ({ ...s, slug: e.target.value.trim().toLowerCase() }))}
                 placeholder="acme-industries"
+              />
+            </Field>
+
+            {modal.mode === 'create' && (
+              <Field label="Admin Password">
+                <input
+                  type="password"
+                  className={inputCls}
+                  value={form.password}
+                  onChange={(e) => setForm((s) => ({ ...s, password: e.target.value }))}
+                  placeholder="Admin@123 (default)"
+                  autoComplete="new-password"
+                />
+              </Field>
+            )}
+
+            <Field label="Max Users (0 = unlimited)">
+              <input
+                type="number"
+                min="0"
+                className={inputCls}
+                value={form.max_users}
+                onChange={(e) => setForm((s) => ({ ...s, max_users: Number(e.target.value) || 0 }))}
+                placeholder="0"
               />
             </Field>
 

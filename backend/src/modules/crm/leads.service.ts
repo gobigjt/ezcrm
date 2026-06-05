@@ -166,6 +166,20 @@ export class LeadsService {
     return r === 'sales executive' || r === 'agent';
   }
 
+  private isAdminRole(role: unknown): boolean {
+    const r = String(role || '').trim().toLowerCase();
+    return r === 'admin' || r === 'super admin';
+  }
+
+  private async userCanAssignLeads(uid: number, tenantId: number): Promise<boolean> {
+    if (!uid || tenantId <= 0) return false;
+    const r = await this.db.query(
+      'SELECT can_assign_leads FROM users WHERE id=$1 AND tenant_id=$2',
+      [uid, tenantId],
+    );
+    return r.rows[0]?.can_assign_leads === true;
+  }
+
   /** `YYYY-MM-DD` only; returns null if invalid. */
   private parseYmdFilter(v: unknown): string | null {
     if (v == null || v === '') return null;
@@ -192,36 +206,26 @@ export class LeadsService {
    * - a reporting Sales Executive via `filters.assigned_to`.
    */
   private async resolveScopedLeadUserId(
-    filters: any,
+    _filters: any,
     currentUser?: { id?: unknown; role?: unknown },
   ): Promise<number | null> {
     const uid = Number(currentUser?.id);
     if (!Number.isInteger(uid) || uid <= 0) return null;
 
     const roleStr = String(currentUser?.role || '').trim().toLowerCase();
-    if (this.isSalesExecutiveRole(roleStr)) {
-      return uid;
-    }
 
-    if (this.isSalesManagerRole(roleStr)) {
-      const raw = filters?.assigned_to;
-      if (raw == null || String(raw).trim() === '') return null;
-      const execId = Number(raw);
-      if (!Number.isInteger(execId) || execId <= 0) return null;
-      if (execId === uid) return uid;
-      const tenantId = this.requireTenantId(currentUser as any);
-      const v = await this.db.query(
-        `SELECT 1 FROM users
-          WHERE id = $1 AND role = 'Sales Executive' AND is_active = TRUE AND sales_manager_id = $2
-            AND tenant_id = $3`,
-        [execId, uid, tenantId],
-      );
-      if (v.rows[0]) {
-        return execId;
-      }
-      return null;
-    }
-    return null;
+    // Admin and Super Admin always see everything
+    if (this.isAdminRole(roleStr)) return null;
+
+    // Sales Managers see everything in their tenant
+    if (this.isSalesManagerRole(roleStr)) return null;
+
+    // Users with can_assign_leads permission see everything (like admin)
+    const tenantId = this.requireTenantId(currentUser as any);
+    if (await this.userCanAssignLeads(uid, tenantId)) return null;
+
+    // Everyone else: only their directly assigned leads
+    return uid;
   }
 
   /** Sales executives reporting to the current user (Sales Manager only; others get []). */
@@ -275,20 +279,27 @@ export class LeadsService {
     const uid = Number(currentUser?.id);
     const roleStr = String(currentUser?.role || '').trim().toLowerCase();
     const forceOwn = this.isOwnAssignedScope(currentUser?.role) && Number.isInteger(uid) && uid > 0;
+
+    // Role-based data scoping on created_by
+    if (!this.isAdminRole(roleStr) && Number.isInteger(uid) && uid > 0) {
+      if (this.isSalesManagerRole(roleStr)) {
+        // Manager sees own records + team members' records (null created_by visible to all)
+        conds.push(
+          `(l.created_by IS NULL OR l.created_by = $${i} OR l.created_by IN (SELECT id FROM users WHERE sales_manager_id = $${i} AND tenant_id = $${i + 1}))`,
+        );
+        vals.push(uid, tenantId > 0 ? tenantId : null);
+        i += 2;
+      } else {
+        // Sales Executive / Agent / others see only their own records (null created_by visible to all)
+        conds.push(`(l.created_by IS NULL OR l.created_by = $${i++})`);
+        vals.push(uid);
+      }
+    }
+
     if (scopedUserId != null && scopedUserId > 0) {
-      const managerOwnScope = this.isSalesManagerRole(roleStr) && scopedUserId === uid;
-      const salesExecOwnScope = !managerOwnScope && this.isSalesExecutiveRole(roleStr);
-      conds.push(
-        managerOwnScope
-          ? `(l.assigned_manager_id=$${i})`
-          : salesExecOwnScope
-            ? `(l.assigned_to=$${i})`
-            : `(l.assigned_to=$${i} OR l.created_by=$${i})`,
-      );
+      // Scoped users (Sales Executives) see leads assigned to them OR leads they created themselves
+      conds.push(`(l.assigned_to=$${i} OR l.created_by=$${i++})`);
       vals.push(scopedUserId);
-      i++;
-      // `assigned_to` in query params is already encoded in the scoped clause above.
-      // Keeping both added `AND l.assigned_to = …`, which hid e.g. unassigned leads created by that user.
       delete f.assigned_to;
     }
     if (f.stage_id) {
@@ -299,7 +310,7 @@ export class LeadsService {
       conds.push(`l.source_id=$${i++}`);
       vals.push(f.source_id);
     }
-    if (!forceOwn && f.assigned_to) {
+    if (!forceOwn && !scopedUserId && f.assigned_to) {
       conds.push(`l.assigned_to=$${i++}`);
       vals.push(f.assigned_to);
     }
@@ -337,9 +348,7 @@ export class LeadsService {
   async list(filters: any, currentUser?: { id?: unknown; role?: unknown }) {
     const scopedUserId = await this.resolveScopedLeadUserId(filters, currentUser);
     const { where, vals } = this.buildLeadListWhere(filters, currentUser, scopedUserId);
-    const orderBy = `ORDER BY
-         CASE l.priority WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 ELSE 2 END,
-         l.created_at DESC`;
+    const orderBy = `ORDER BY l.created_at DESC`;
     const selectFrom = `SELECT l.*,ls.name AS stage,s.name AS source,u.name AS assigned_name, um.name AS assigned_manager_name,
        (SELECT MIN(f.due_date) FROM lead_followups f WHERE f.lead_id=l.id AND f.is_done=FALSE AND f.due_date >= NOW()) AS next_followup_at
        FROM leads l
@@ -395,7 +404,7 @@ export class LeadsService {
         conds.push(`(l.assigned_manager_id = $${bind})`);
         vals.push(uid);
       } else {
-        conds.push(`(l.assigned_to=$${bind})`);
+        conds.push(`(l.assigned_to=$${bind} OR l.created_by=$${bind})`);
         vals.push(uid);
       }
     }

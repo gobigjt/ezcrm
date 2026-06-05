@@ -416,6 +416,7 @@ function UsersTab({ allPerms, roles }) {
     role: 'Sales Executive',
     zone_id: '',
     sales_manager_id: '',
+    can_assign_leads: false,
   });
   const [eForm, setEForm] = useState({
     name: '',
@@ -424,6 +425,7 @@ function UsersTab({ allPerms, roles }) {
     newPassword: '',
     zone_id: '',
     sales_manager_id: '',
+    can_assign_leads: false,
   });
   const selectableRoles = roles.filter((r) => String(r?.name || '').toLowerCase() !== 'super admin');
 
@@ -486,6 +488,7 @@ function UsersTab({ allPerms, roles }) {
       password: cForm.password,
       role: cForm.role,
       zone_id: cForm.zone_id === '' || cForm.zone_id == null ? null : Number(cForm.zone_id),
+      can_assign_leads: cForm.can_assign_leads,
     };
     if (isSalesExecutiveRole(cForm.role) && cForm.sales_manager_id !== '' && cForm.sales_manager_id != null) {
       payload.sales_manager_id = Number(cForm.sales_manager_id);
@@ -500,6 +503,7 @@ function UsersTab({ allPerms, roles }) {
         role: 'Sales Executive',
         zone_id: '',
         sales_manager_id: '',
+        can_assign_leads: false,
       });
       load();
       show('User created successfully', 'success');
@@ -518,6 +522,7 @@ function UsersTab({ allPerms, roles }) {
       email: eForm.email,
       role: eForm.role,
       zone_id: eForm.zone_id === '' || eForm.zone_id == null ? null : Number(eForm.zone_id),
+      can_assign_leads: eForm.can_assign_leads,
     };
     if (eForm.newPassword) payload.password = eForm.newPassword;
     if (isSalesExecutiveRole(eForm.role)) {
@@ -546,6 +551,7 @@ function UsersTab({ allPerms, roles }) {
       newPassword: '',
       zone_id: u.zone_id ?? '',
       sales_manager_id: u.sales_manager_id ?? '',
+      can_assign_leads: u.can_assign_leads ?? false,
     });
     setEditModal(u);
   };
@@ -731,6 +737,20 @@ function UsersTab({ allPerms, roles }) {
                   </Field>
                 </div>
               )}
+              <div className="col-span-2">
+                <label className="flex items-center gap-3 cursor-pointer select-none p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={cForm.can_assign_leads}
+                    onChange={e => setCForm(f => ({ ...f, can_assign_leads: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-brand-600"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Can Assign Leads</p>
+                    <p className="text-xs text-slate-400">This user can view unassigned leads and assign them to others</p>
+                  </div>
+                </label>
+              </div>
             </div>
             <FormActions onCancel={() => setCreateModal(false)} submitLabel="Create User" loading={saving} />
           </form>
@@ -792,6 +812,20 @@ function UsersTab({ allPerms, roles }) {
                   </Field>
                 </div>
               )}
+              <div className="col-span-2">
+                <label className="flex items-center gap-3 cursor-pointer select-none p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={eForm.can_assign_leads}
+                    onChange={e => setEForm(f => ({ ...f, can_assign_leads: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-brand-600"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Can Assign Leads</p>
+                    <p className="text-xs text-slate-400">This user can view unassigned leads and assign them to others</p>
+                  </div>
+                </label>
+              </div>
             </div>
 
             {eForm.role === 'Sales Manager' && (

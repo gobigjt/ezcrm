@@ -591,24 +591,50 @@ export class SalesService {
   // ─── Customers ────────────────────────────────────────────
   async listCustomers(search?: string, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
+    const uid = Number(actor?.id);
+    const roleStr = String(actor?.role || '').trim().toLowerCase();
+    const isAdmin = roleStr === 'admin' || roleStr === 'super admin';
+    const isManager = roleStr === 'sales manager' || roleStr === 'manager';
+
+    // Role-based scoping is user-specific; skip cache for scoped roles
+    const useCache = isAdmin || !Number.isFinite(uid) || uid <= 0;
     const cacheKey = `customers:${tenantId}:${search||''}`;
-    const cached = await this.cache.get<any[]>(cacheKey);
-    if (cached) return cached.map((r) => this.toCustomerApiShape(r));
+    if (useCache) {
+      const cached = await this.cache.get<any[]>(cacheKey);
+      if (cached) return cached.map((r) => this.toCustomerApiShape(r));
+    }
+
     const vals: any[] = [tenantId];
+    let n = 2;
     let where = 'WHERE ($1::integer = 0 OR c.tenant_id = $1)';
+
     if (search) {
       vals.push(`%${search}%`);
-      where += ' AND (c.name ILIKE $2 OR c.email ILIKE $2 OR c.phone ILIKE $2)';
+      where += ` AND (c.name ILIKE $${n} OR c.email ILIKE $${n} OR c.phone ILIKE $${n})`;
+      n++;
     }
+
+    // Role-based data scope
+    if (!isAdmin && Number.isFinite(uid) && uid > 0) {
+      if (isManager) {
+        where += ` AND (c.created_by IS NULL OR c.created_by = $${n} OR c.created_by IN (SELECT id FROM users WHERE sales_manager_id = $${n} AND tenant_id = $${n + 1}))`;
+        vals.push(uid, tenantId > 0 ? tenantId : null);
+        n += 2;
+      } else {
+        where += ` AND (c.created_by IS NULL OR c.created_by = $${n++})`;
+        vals.push(uid);
+      }
+    }
+
     const res = await this.db.query(
       `SELECT c.*, u.name AS created_by_name
        FROM customers c
        LEFT JOIN users u ON u.id = c.created_by
        ${where}
-       ORDER BY c.name`,
+       ORDER BY c.created_at DESC`,
       vals,
     );
-    await this.cache.set(cacheKey, res.rows, 120);
+    if (useCache) await this.cache.set(cacheKey, res.rows, 120);
     return res.rows.map((r) => this.toCustomerApiShape(r));
   }
 
@@ -767,7 +793,7 @@ export class SalesService {
     });
   }
 
-  async generateSalesPdfFile(kind: 'quotation' | 'order' | 'invoice', id: number, actor?: SalesActor) {
+  async generateSalesPdfFile(kind: 'quotation' | 'order' | 'invoice', id: number, actor?: SalesActor, templateOpts?: { template?: number }) {
     const company = (await this.db.query('SELECT * FROM company_settings LIMIT 1')).rows[0] || {};
     const docData =
       kind === 'quotation'
@@ -802,7 +828,7 @@ export class SalesService {
           company as Record<string, unknown>,
           logoDataUrl,
           kind,
-          { includeSheetFooter: true, rasterLayout: false },
+          { includeSheetFooter: true, rasterLayout: false, template: templateOpts?.template },
         );
         const buf = await renderSalesPrintHtmlToPdf(html);
         await writeFile(filePath, buf);
@@ -1411,6 +1437,11 @@ export class SalesService {
     to?: string;
   }, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
+    const uid = Number(actor?.id);
+    const roleStr = String(actor?.role || '').trim().toLowerCase();
+    const isAdmin = roleStr === 'admin' || roleStr === 'super admin';
+    const isManager = roleStr === 'sales manager' || roleStr === 'manager';
+
     const conds: string[] = [];
     const vals: any[] = [tenantId];
     let n = 2;
@@ -1439,6 +1470,24 @@ export class SalesService {
       conds.push(`q.created_at<=$${n++}`);
       vals.push(`${filters.to} 23:59:59`);
     }
+
+    // Role-based data scope (only when no explicit created_by filter is already applied)
+    if (!isAdmin && !filters?.created_by && Number.isFinite(uid) && uid > 0) {
+      if (isManager) {
+        conds.push(
+          `(q.sales_executive_id IS NULL OR q.sales_executive_id = $${n} OR q.created_by IS NULL OR q.created_by = $${n}` +
+          ` OR q.sales_executive_id IN (SELECT id FROM users WHERE sales_manager_id = $${n} AND tenant_id = $${n + 1})` +
+          ` OR q.created_by IN (SELECT id FROM users WHERE sales_manager_id = $${n} AND tenant_id = $${n + 1}))`,
+        );
+        vals.push(uid, tenantId > 0 ? tenantId : null);
+        n += 2;
+      } else {
+        conds.push(`(q.sales_executive_id IS NULL OR q.sales_executive_id = $${n} OR q.created_by IS NULL OR q.created_by = $${n})`);
+        vals.push(uid);
+        n++;
+      }
+    }
+
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     return (
       await this.db.query(
@@ -1531,10 +1580,14 @@ export class SalesService {
           tenantId > 0 ? tenantId : null,
         ],
       );
-      for (const it of items)
+      for (const it of items) {
+        const pid = it.product_id || null;
+        const uw = pid ? Number((await client.query('SELECT weight FROM products WHERE id=$1', [pid])).rows[0]?.weight || 0) : 0;
+        const lw = uw * Number(it.quantity || 0);
         await client.query(
-          'INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-          [qr.rows[0].id, it.product_id||null, it.description, it.quantity, it.unit_price, it.discount||0, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total]);
+          'INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total,unit_weight,line_weight) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+          [qr.rows[0].id, pid, it.description, it.quantity, it.unit_price, it.discount||0, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total, uw, lw]);
+      }
       return qr.rows[0];
     });
     await this.salesNotifications.notifySalesManagerOnExecutiveQuoteCreated(created, actor);
@@ -1551,6 +1604,11 @@ export class SalesService {
     to?: string;
   }, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
+    const uid = Number(actor?.id);
+    const roleStr = String(actor?.role || '').trim().toLowerCase();
+    const isAdmin = roleStr === 'admin' || roleStr === 'super admin';
+    const isManager = roleStr === 'sales manager' || roleStr === 'manager';
+
     const conds: string[] = [];
     const vals: any[] = [tenantId];
     let n = 2;
@@ -1579,6 +1637,24 @@ export class SalesService {
       conds.push(`o.order_date<=$${n++}`);
       vals.push(filters.to);
     }
+
+    // Role-based data scope (only when no explicit created_by filter is already applied)
+    if (!isAdmin && !filters?.created_by && Number.isFinite(uid) && uid > 0) {
+      if (isManager) {
+        conds.push(
+          `(o.sales_executive_id IS NULL OR o.sales_executive_id = $${n} OR o.created_by IS NULL OR o.created_by = $${n}` +
+          ` OR o.sales_executive_id IN (SELECT id FROM users WHERE sales_manager_id = $${n} AND tenant_id = $${n + 1})` +
+          ` OR o.created_by IN (SELECT id FROM users WHERE sales_manager_id = $${n} AND tenant_id = $${n + 1}))`,
+        );
+        vals.push(uid, tenantId > 0 ? tenantId : null);
+        n += 2;
+      } else {
+        conds.push(`(o.sales_executive_id IS NULL OR o.sales_executive_id = $${n} OR o.created_by IS NULL OR o.created_by = $${n})`);
+        vals.push(uid);
+        n++;
+      }
+    }
+
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     return (
       await this.db.query(
@@ -1668,10 +1744,14 @@ export class SalesService {
           tenantId > 0 ? tenantId : null,
         ],
       );
-      for (const it of items)
+      for (const it of items) {
+        const pid = it.product_id || null;
+        const uw = pid ? Number((await client.query('SELECT weight FROM products WHERE id=$1', [pid])).rows[0]?.weight || 0) : 0;
+        const lw = uw * Number(it.quantity || 0);
         await client.query(
-          'INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-          [or.rows[0].id, it.product_id||null, it.description, it.quantity, it.unit_price, it.discount||0, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total]);
+          'INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total,unit_weight,line_weight) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+          [or.rows[0].id, pid, it.description, it.quantity, it.unit_price, it.discount||0, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total, uw, lw]);
+      }
       return or.rows[0];
     });
   }
@@ -1692,11 +1772,17 @@ export class SalesService {
     );
     if (!apRow.rows[0]) return null;
     const ap0 = String(apRow.rows[0].approval_status ?? 'approved');
-    if (ap0 === 'pending' && body.status !== undefined) {
-      throw new BadRequestException('Order is pending approval; fulfillment status cannot be changed yet.');
+    const actorCanApproveOrder = canApproveSalesDocuments(actor?.role);
+    if (!actorCanApproveOrder) {
+      if (ap0 === 'pending' && body.status !== undefined) {
+        throw new BadRequestException('Order is pending approval; fulfillment status cannot be changed yet.');
+      }
+      if (ap0 === 'rejected' && body.status !== undefined) {
+        throw new BadRequestException('This order was rejected.');
+      }
     }
-    if (ap0 === 'rejected' && body.status !== undefined) {
-      throw new BadRequestException('This order was rejected.');
+    if (actorCanApproveOrder && ap0 === 'pending' && body.status !== undefined) {
+      body.approval_status = 'approved';
     }
     if (body?.items !== undefined && Array.isArray(body.items)) {
       return this.db.transaction(async (client) => {
@@ -1713,11 +1799,14 @@ export class SalesService {
           cgst += lineCgst;
           sgst += lineSgst;
           igst += lineIgst;
+          const oPid = it.product_id ?? null;
+          const oUw = oPid ? Number((await client.query('SELECT weight FROM products WHERE id=$1', [oPid])).rows[0]?.weight || 0) : 0;
+          const oLw = oUw * Number(it.quantity || 0);
           await client.query(
-            'INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-            [id, it.product_id ?? null, String(it.description ?? ''), Number(it.quantity),
+            'INSERT INTO sales_order_items (order_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total,unit_weight,line_weight) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+            [id, oPid, String(it.description ?? ''), Number(it.quantity),
              Number(it.unit_price), Number(it.discount || 0), Number(it.gst_rate ?? 0),
-             Number(it.cgst || 0), Number(it.sgst || 0), Number(it.igst || 0), lineTotal],
+             Number(it.cgst || 0), Number(it.sgst || 0), Number(it.igst || 0), lineTotal, oUw, oLw],
           );
         }
         const total = subtotal + cgst + sgst + igst;
@@ -1782,6 +1871,11 @@ export class SalesService {
     to?: string;
   }, actor?: SalesActor) {
     const tenantId = this.requireTenantId(actor);
+    const uid = Number(actor?.id);
+    const roleStr = String(actor?.role || '').trim().toLowerCase();
+    const isAdmin = roleStr === 'admin' || roleStr === 'super admin';
+    const isManager = roleStr === 'sales manager' || roleStr === 'manager';
+
     const conds: string[] = [];
     const vals: any[] = [tenantId];
     let n = 2;
@@ -1810,6 +1904,22 @@ export class SalesService {
       conds.push(`i.invoice_date<=$${n++}`);
       vals.push(filters.to);
     }
+
+    // Role-based data scope (only when no explicit created_by filter is already applied)
+    if (!isAdmin && !filters?.created_by && Number.isFinite(uid) && uid > 0) {
+      if (isManager) {
+        conds.push(
+          `(i.created_by IS NULL OR i.created_by = $${n}` +
+          ` OR i.created_by IN (SELECT id FROM users WHERE sales_manager_id = $${n} AND tenant_id = $${n + 1}))`,
+        );
+        vals.push(uid, tenantId > 0 ? tenantId : null);
+        n += 2;
+      } else {
+        conds.push(`(i.created_by IS NULL OR i.created_by = $${n++})`);
+        vals.push(uid);
+      }
+    }
+
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     return (
       await this.db.query(
@@ -1842,7 +1952,7 @@ export class SalesService {
         [id, tenantId],
       ),
       this.db.query(
-        `SELECT ii.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
+        `SELECT ii.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code, ii.unit_weight, ii.line_weight
            FROM invoice_items ii LEFT JOIN products pr ON pr.id=ii.product_id WHERE ii.invoice_id=$1`,
         [id],
       ),
@@ -1910,9 +2020,18 @@ export class SalesService {
           tenantId > 0 ? tenantId : null,
         ],
       );
-      for (const it of items)
-        await client.query('INSERT INTO invoice_items (invoice_id,product_id,description,quantity,unit_price,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-          [ir.rows[0].id, it.product_id, it.description, it.quantity, it.unit_price, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total]);
+      for (const it of items) {
+        let unitWeight = 0;
+        if (it.product_id) {
+          const pw = await client.query('SELECT weight FROM products WHERE id=$1', [it.product_id]);
+          unitWeight = Number(pw.rows[0]?.weight ?? 0);
+        }
+        const lineWeight = unitWeight * Number(it.quantity ?? 0);
+        await client.query(
+          'INSERT INTO invoice_items (invoice_id,product_id,description,quantity,unit_price,gst_rate,cgst,sgst,igst,total,unit_weight,line_weight) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+          [ir.rows[0].id, it.product_id, it.description, it.quantity, it.unit_price, it.gst_rate||0, it.cgst||0, it.sgst||0, it.igst||0, it.total, unitWeight, lineWeight],
+        );
+      }
       return ir.rows[0];
     });
     await this.cache.del('dashboard:stats');
@@ -2176,17 +2295,24 @@ export class SalesService {
     );
     if (!apRow.rows[0]) return null;
     const ap0 = String(apRow.rows[0].approval_status ?? 'approved');
-    if (ap0 === 'pending' && body.status !== undefined) {
-      const st = String(body.status).toLowerCase();
-      if (st === 'sent' || st === 'accepted') {
-        throw new BadRequestException('Quotation is pending approval; it cannot be marked sent or accepted yet.');
+    const actorCanApprove = canApproveSalesDocuments(actor?.role);
+    if (!actorCanApprove) {
+      if (ap0 === 'pending' && body.status !== undefined) {
+        const st = String(body.status).toLowerCase();
+        if (st === 'sent' || st === 'accepted') {
+          throw new BadRequestException('Quotation is pending approval; it cannot be marked sent or accepted yet.');
+        }
+      }
+      if (ap0 === 'rejected' && body.status !== undefined) {
+        const st = String(body.status).toLowerCase();
+        if (st === 'sent' || st === 'accepted') {
+          throw new BadRequestException('This quotation was rejected.');
+        }
       }
     }
-    if (ap0 === 'rejected' && body.status !== undefined) {
-      const st = String(body.status).toLowerCase();
-      if (st === 'sent' || st === 'accepted') {
-        throw new BadRequestException('This quotation was rejected.');
-      }
+    // Auto-approve when an approver updates status on a pending document
+    if (actorCanApprove && ap0 === 'pending' && body.status !== undefined) {
+      body.approval_status = 'approved';
     }
     if (body?.items !== undefined && Array.isArray(body.items)) {
       return this.db.transaction(async (client) => {
@@ -2203,11 +2329,14 @@ export class SalesService {
           cgst += lineCgst;
           sgst += lineSgst;
           igst += lineIgst;
+          const qPid = it.product_id ?? null;
+          const qUw = qPid ? Number((await client.query('SELECT weight FROM products WHERE id=$1', [qPid])).rows[0]?.weight || 0) : 0;
+          const qLw = qUw * Number(it.quantity || 0);
           await client.query(
-            'INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-            [id, it.product_id ?? null, String(it.description ?? ''), Number(it.quantity),
+            'INSERT INTO quotation_items (quotation_id,product_id,description,quantity,unit_price,discount,gst_rate,cgst,sgst,igst,total,unit_weight,line_weight) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+            [id, qPid, String(it.description ?? ''), Number(it.quantity),
              Number(it.unit_price), Number(it.discount || 0), Number(it.gst_rate ?? 0),
-             Number(it.cgst || 0), Number(it.sgst || 0), Number(it.igst || 0), lineTotal],
+             Number(it.cgst || 0), Number(it.sgst || 0), Number(it.igst || 0), lineTotal, qUw, qLw],
           );
         }
         const total = subtotal + cgst + sgst + igst;
@@ -2269,6 +2398,15 @@ export class SalesService {
       sets.push(`sales_executive_id = $${n++}`);
       vals.push(body.sales_executive_id);
     }
+    if (body?.approval_status !== undefined) {
+      sets.push(`approval_status = $${n++}`);
+      vals.push(body.approval_status);
+      if (body.approval_status === 'approved') {
+        sets.push(`approved_by = $${n++}`);
+        vals.push(Number(actor?.id) || null);
+        sets.push(`approved_at = NOW()`);
+      }
+    }
     if (!sets.length) return this.getQuotation(id, actor);
     vals.push(id);
     await this.db.query(`UPDATE quotations SET ${sets.join(', ')} WHERE id = $${n}`, vals);
@@ -2292,11 +2430,17 @@ export class SalesService {
     );
     if (!apInv.rows[0]) return null;
     const apI0 = String(apInv.rows[0].approval_status ?? 'approved');
-    if (apI0 === 'pending' && body.status !== undefined) {
-      throw new BadRequestException('Invoice is pending approval; payment status cannot be changed yet.');
+    const actorCanApproveInv = canApproveSalesDocuments(actor?.role);
+    if (!actorCanApproveInv) {
+      if (apI0 === 'pending' && body.status !== undefined) {
+        throw new BadRequestException('Invoice is pending approval; payment status cannot be changed yet.');
+      }
+      if (apI0 === 'rejected' && body.status !== undefined) {
+        throw new BadRequestException('This invoice was rejected.');
+      }
     }
-    if (apI0 === 'rejected' && body.status !== undefined) {
-      throw new BadRequestException('This invoice was rejected.');
+    if (actorCanApproveInv && apI0 === 'pending' && body.status !== undefined) {
+      body.approval_status = 'approved';
     }
     if (body?.items !== undefined && Array.isArray(body.items)) {
       const row = await this.db.transaction(async (client) => {
@@ -2350,8 +2494,14 @@ export class SalesService {
           sgst += lineSgst;
           igst += lineIgst;
 
+          let unitWeight = 0;
+          if (it.product_id) {
+            const pw = await client.query('SELECT weight FROM products WHERE id=$1', [it.product_id]);
+            unitWeight = Number(pw.rows[0]?.weight ?? 0);
+          }
+          const lineWeight = unitWeight * qty;
           await client.query(
-            'INSERT INTO invoice_items (invoice_id,product_id,description,quantity,unit_price,gst_rate,cgst,sgst,igst,total) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+            'INSERT INTO invoice_items (invoice_id,product_id,description,quantity,unit_price,gst_rate,cgst,sgst,igst,total,unit_weight,line_weight) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
             [
               id,
               it.product_id ?? null,
@@ -2363,6 +2513,8 @@ export class SalesService {
               lineSgst,
               lineIgst,
               lineTotal,
+              unitWeight,
+              lineWeight,
             ],
           );
         }

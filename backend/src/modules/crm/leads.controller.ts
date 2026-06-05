@@ -149,7 +149,7 @@ export class LeadsController {
     return this.svc.convertLeadToCustomer(leadId, u);
   }
 
-  @UseGuards(RolesGuard) @Roles('Admin','Manager')
+  @UseGuards(RolesGuard) @Roles('Admin','Sales Manager','Sales Executive','Agent')
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() u: any) {
     const leadId = Number(id);

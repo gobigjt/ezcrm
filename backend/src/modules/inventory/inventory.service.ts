@@ -148,7 +148,7 @@ export class InventoryService {
          GROUP BY product_id
        ) st ON st.product_id = p.id
        ${where}
-       ORDER BY p.name`,
+       ORDER BY p.created_at DESC`,
       vals,
     )).rows;
     await this.cache.set(cacheKey, rows, 300);
@@ -178,10 +178,11 @@ export class InventoryService {
     const salePrice = Number(d?.sale_price);
     const gstRate = Number(d?.gst_rate);
     const lowStockAlert = Number(d?.low_stock_alert);
+    const weight = Number(d?.weight);
     let res;
     try {
       res = await this.db.query(
-        'INSERT INTO products (name,code,sku,hsn_code,category,brand_id,description,unit,purchase_price,sale_price,image_url,gst_rate,low_stock_alert,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+        'INSERT INTO products (name,code,sku,hsn_code,category,brand_id,description,unit,purchase_price,sale_price,image_url,gst_rate,low_stock_alert,weight,tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
         [
           d.name,
           d.code,
@@ -196,6 +197,7 @@ export class InventoryService {
           d.image_url,
           Number.isFinite(gstRate) ? gstRate : 0,
           Number.isFinite(lowStockAlert) ? lowStockAlert : 0,
+          Number.isFinite(weight) ? weight : 0,
           tenantId || null,
         ],
       );
@@ -207,13 +209,17 @@ export class InventoryService {
   }
   async updateProduct(id: number, d: any, ctx?: any) {
     const tenantId = this.requireTenantId(ctx);
-    const fields = ['name','code','sku','hsn_code','category','brand_id','description','unit','purchase_price','sale_price','image_url','gst_rate','low_stock_alert','is_active'];
+    const fields = ['name','code','sku','hsn_code','category','brand_id','description','unit','purchase_price','sale_price','image_url','gst_rate','low_stock_alert','weight','is_active'];
     const sets: string[] = []; const vals: any[] = []; let i = 1;
+    const numericFields = ['purchase_price', 'sale_price', 'gst_rate', 'low_stock_alert', 'weight'];
     for (const f of fields) {
       if (d[f] === undefined) continue;
       let nextVal = d[f];
       if (f === 'brand_id') {
         nextVal = this.toNullableInt(d[f]);
+      } else if (numericFields.includes(f)) {
+        const n = Number(nextVal);
+        nextVal = Number.isFinite(n) ? n : 0;
       }
       sets.push(`${f}=$${i++}`);
       vals.push(nextVal);

@@ -367,6 +367,64 @@ class CrmLeadDetailView extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 10),
+                          Obx(() {
+                            final auth = Get.find<AuthController>();
+                            final role = auth.role.value.trim().toLowerCase();
+                            final canAssign = role == 'admin' || role == 'super admin' || auth.canAssignLeads.value;
+                            if (!canAssign) return const SizedBox.shrink();
+                            final execs = controller.assignees
+                                .where((u) { final r = (u['role'] ?? '').toString().trim().toLowerCase(); return r == 'sales executive' || r == 'agent'; })
+                                .toList();
+                            final managers = controller.assignees
+                                .where((u) { final r = (u['role'] ?? '').toString().trim().toLowerCase(); return r == 'sales manager' || r == 'manager'; })
+                                .toList();
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  'Assign Lead',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 6),
+                                DropdownButtonFormField<int?>(
+                                  value: controller.assignSelectedTo.value,
+                                  decoration: const InputDecoration(labelText: 'Sales Executive', isDense: true, border: OutlineInputBorder()),
+                                  items: [
+                                    const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                                    ...execs.map((u) => DropdownMenuItem<int?>(
+                                          value: int.tryParse('${u['id']}'),
+                                          child: Text((u['name'] ?? '').toString()),
+                                        )),
+                                  ],
+                                  onChanged: controller.isSubmitting.value ? null : (v) => controller.assignSelectedTo.value = v,
+                                ),
+                                const SizedBox(height: 6),
+                                DropdownButtonFormField<int?>(
+                                  value: controller.assignSelectedManagerId.value,
+                                  decoration: const InputDecoration(labelText: 'Manager', isDense: true, border: OutlineInputBorder()),
+                                  items: [
+                                    const DropdownMenuItem<int?>(value: null, child: Text('Unassigned')),
+                                    ...managers.map((u) => DropdownMenuItem<int?>(
+                                          value: int.tryParse('${u['id']}'),
+                                          child: Text((u['name'] ?? '').toString()),
+                                        )),
+                                  ],
+                                  onChanged: controller.isSubmitting.value ? null : (v) => controller.assignSelectedManagerId.value = v,
+                                ),
+                                const SizedBox(height: 6),
+                                FilledButton(
+                                  onPressed: controller.isSubmitting.value ? null : () async {
+                                    await controller.assignLead();
+                                    Get.snackbar('Assigned', 'Lead assignment updated');
+                                  },
+                                  child: controller.isSubmitting.value
+                                      ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                      : const Text('Update Assignment'),
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                            );
+                          }),
                           Text(
                             'Move stage',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),

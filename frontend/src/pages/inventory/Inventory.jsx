@@ -4,6 +4,7 @@ import api from '../../api/client';
 import Table from '../../components/Table';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { formatWeight } from '../../utils/formatWeight';
 
 function stockLabel(v) {
   const n = Number(v ?? 0);
@@ -74,7 +75,7 @@ export default function InventoryProductsPage() {
 
       <Table
         relaxLastColumnWrap
-        cols={['Image','Name','SKU','Code','Category','Brand','Unit','Stock','Purchase Price','Sale Price','Actions']}
+        cols={['Image','Name','SKU','Code','Category','Brand','Unit','Weight','Stock','Purchase Price','Sale Price','Actions']}
         rows={products.map((p) => {
           const pid = p.id ?? p.product_id;
           return [
@@ -85,6 +86,7 @@ export default function InventoryProductsPage() {
             p.category,
             p.brand_name || '—',
             p.unit,
+            formatWeight(p.weight),
             stockLabel(p.total_stock),
             `₹${Number(p.purchase_price).toLocaleString('en-IN')}`,
             `₹${Number(p.sale_price).toLocaleString('en-IN')}`,

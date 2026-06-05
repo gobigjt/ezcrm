@@ -211,12 +211,20 @@ function LeadModal({ lead, stages, sources, users, categories = [], onClose, onS
   const [form, setForm] = useState(() => leadToForm(lead));
   const [loading, setLoading] = useState(false);
   const roleName = String(user?.role || '').toLowerCase();
-  const isSalesManager = roleName === 'sales manager' || roleName === 'manager';
+  const canAssignLeads = roleName === 'admin' || roleName === 'super admin' || user?.can_assign_leads === true;
   const salesExecutiveUsers = useMemo(
     () =>
       users.filter((u) => {
         const r = String(u?.role || '').trim().toLowerCase();
         return r === 'sales executive' || r === 'agent';
+      }),
+    [users],
+  );
+  const salesManagerUsers = useMemo(
+    () =>
+      users.filter((u) => {
+        const r = String(u?.role || '').trim().toLowerCase();
+        return r === 'sales manager' || r === 'manager';
       }),
     [users],
   );
@@ -329,22 +337,22 @@ function LeadModal({ lead, stages, sources, users, categories = [], onClose, onS
             </select>
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Assign to sales Executive">
-            <select className={selectCls} value={form.assigned_to} onChange={set('assigned_to')}>
-              <option value="">Unassigned</option>
-              {salesExecutiveUsers.map(u => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
-            </select>
-          </Field>
-          {!isSalesManager && (
+        {canAssignLeads && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Assign to sales Executive">
+              <select className={selectCls} value={form.assigned_to} onChange={set('assigned_to')}>
+                <option value="">Unassigned</option>
+                {salesExecutiveUsers.map(u => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
+              </select>
+            </Field>
             <Field label="Assign Manager">
               <select className={selectCls} value={form.assigned_manager_id} onChange={set('assigned_manager_id')}>
                 <option value="">Unassigned</option>
-                {users.map(u => <option key={u.id} value={String(u.id)}>{assigneeLabel(u)}</option>)}
+                {salesManagerUsers.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
               </select>
             </Field>
-          )}
-        </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Priority">
             <select className={selectCls} value={form.priority} onChange={set('priority')}>
@@ -365,7 +373,7 @@ function LeadModal({ lead, stages, sources, users, categories = [], onClose, onS
 
 // ─── Lead Drawer ─────────────────────────────────────────────
 
-function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManageTasks }) {
+function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManageTasks, canAssignLeads }) {
   const nav = useNavigate();
   const { show: showToast } = useToast();
   const [activities, setActivities] = useState([]);
@@ -378,6 +386,16 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
   const [detail,     setDetail]     = useState(lead);
   const [copyLabel,    setCopyLabel]    = useState('');
   const [copyAppLabel, setCopyAppLabel] = useState('');
+  const [assignForm,   setAssignForm]   = useState({ assigned_to: '', assigned_manager_id: '' });
+
+  const drawerSalesExecs = useMemo(
+    () => users.filter(u => { const r = String(u?.role || '').trim().toLowerCase(); return r === 'sales executive' || r === 'agent'; }),
+    [users],
+  );
+  const drawerManagers = useMemo(
+    () => users.filter(u => { const r = String(u?.role || '').trim().toLowerCase(); return r === 'sales manager' || r === 'manager'; }),
+    [users],
+  );
 
   const reload = useCallback(async () => {
     const [leadRes, activitiesRes, followupsRes] = await Promise.all([
@@ -385,10 +403,32 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
       api.get(`/crm/leads/${lead.id}/activities`),
       api.get(`/crm/leads/${lead.id}/followups`),
     ]);
-    setDetail(leadRes.data?.lead || leadRes.data || null);
+    const d = leadRes.data?.lead || leadRes.data || null;
+    setDetail(d);
+    setAssignForm({
+      assigned_to: d?.assigned_to != null ? String(d.assigned_to) : '',
+      assigned_manager_id: d?.assigned_manager_id != null ? String(d.assigned_manager_id) : '',
+    });
     setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
     setFollowups(Array.isArray(followupsRes.data) ? followupsRes.data : []);
   }, [lead.id]);
+
+  const assignLead = async () => {
+    setSaving(true);
+    try {
+      await api.patch(`/crm/leads/${lead.id}`, {
+        assigned_to: assignForm.assigned_to === '' ? null : Number(assignForm.assigned_to),
+        assigned_manager_id: assignForm.assigned_manager_id === '' ? null : Number(assignForm.assigned_manager_id),
+      });
+      await reload();
+      onUpdated();
+      showToast('Lead assigned successfully', 'success');
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not assign lead'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     reload().catch(() => {
@@ -779,6 +819,44 @@ function LeadDrawer({ lead, stages, sources, users, onClose, onUpdated, canManag
               ))}
             </div>
 
+            {canAssignLeads && (
+              <div>
+                <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Assign Lead</p>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <p className="text-[10px] text-slate-400 mb-1">Sales Executive</p>
+                    <select
+                      className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      value={assignForm.assigned_to}
+                      onChange={e => setAssignForm(f => ({ ...f, assigned_to: e.target.value }))}
+                    >
+                      <option value="">Unassigned</option>
+                      {drawerSalesExecs.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 mb-1">Manager</p>
+                    <select
+                      className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      value={assignForm.assigned_manager_id}
+                      onChange={e => setAssignForm(f => ({ ...f, assigned_manager_id: e.target.value }))}
+                    >
+                      <option value="">Unassigned</option>
+                      {drawerManagers.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={assignLead}
+                  disabled={saving}
+                  className="w-full py-1.5 text-xs font-medium rounded-lg bg-brand-600 hover:bg-brand-700 text-white transition-colors disabled:opacity-50"
+                >
+                  {saving ? 'Updating…' : 'Update Assignment'}
+                </button>
+              </div>
+            )}
+
             <div>
               <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Move Stage</p>
               <div className="flex flex-wrap gap-1.5">
@@ -1149,9 +1227,10 @@ export default function CRM() {
   const rowMenuRef = useRef(null);
 
   const roleName = String(user?.role || '').toLowerCase();
-  // Sales Manager can view full manager-scoped pipeline (including assigned_manager_id).
-  // Only Sales Executive is locked to self-assigned leads in web CRM list filters.
-  const ownAssignedOnly = roleName === 'sales executive';
+  const canAssignLeads = roleName === 'admin' || roleName === 'super admin' || user?.can_assign_leads === true;
+  // Only users with assign permission (admin/super admin/can_assign_leads) see all leads.
+  // Everyone else sees only leads assigned to them.
+  const ownAssignedOnly = !canAssignLeads;
 
   const loadLeads = useCallback(() => {
     const params = {};
@@ -1663,6 +1742,7 @@ export default function CRM() {
           onClose={handleCloseDrawer}
           onUpdated={() => { loadLeads(); loadStats(); }}
           canManageTasks={canManageCrmFollowupTasks(user?.role)}
+          canAssignLeads={canAssignLeads}
         />
       )}
 

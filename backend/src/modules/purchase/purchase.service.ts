@@ -25,7 +25,7 @@ export class PurchaseService {
       vals.push(`%${search}%`);
       where += ' AND (name ILIKE $2 OR email ILIKE $2)';
     }
-    return (await this.db.query(`SELECT * FROM vendors ${where} ORDER BY name`, vals)).rows;
+    return (await this.db.query(`SELECT * FROM vendors ${where} ORDER BY created_at DESC`, vals)).rows;
   }
   async getVendor(id: number, ctx?: any) {
     const tenantId = this.requireTenantId(ctx);
@@ -50,10 +50,30 @@ export class PurchaseService {
 
   async listPOs(ctx?: any) {
     const tenantId = this.requireTenantId(ctx);
+    const uid = Number(ctx?.id);
+    const roleStr = String(ctx?.role || '').trim().toLowerCase();
+    const isAdmin = roleStr === 'admin' || roleStr === 'super admin';
+    const isManager = roleStr === 'sales manager' || roleStr === 'manager';
+
+    const vals: any[] = [tenantId];
+    let n = 2;
+    let scopeClause = '';
+
+    if (!isAdmin && Number.isFinite(uid) && uid > 0) {
+      if (isManager) {
+        scopeClause = ` AND (po.created_by IS NULL OR po.created_by = $${n} OR po.created_by IN (SELECT id FROM users WHERE sales_manager_id = $${n} AND tenant_id = $${n + 1}))`;
+        vals.push(uid, tenantId > 0 ? tenantId : null);
+        n += 2;
+      } else {
+        scopeClause = ` AND (po.created_by IS NULL OR po.created_by = $${n++})`;
+        vals.push(uid);
+      }
+    }
+
     return (await this.db.query(
       `SELECT po.*,v.name AS vendor_name FROM purchase_orders po JOIN vendors v ON v.id=po.vendor_id
-       WHERE ($1::integer = 0 OR po.tenant_id = $1)
-       ORDER BY po.created_at DESC`, [tenantId]
+       WHERE ($1::integer = 0 OR po.tenant_id = $1)${scopeClause}
+       ORDER BY po.created_at DESC`, vals
     )).rows;
   }
   async getPO(id: number, ctx?: any) {
@@ -86,11 +106,31 @@ export class PurchaseService {
 
   async listGRNs(ctx?: any) {
     const tenantId = this.requireTenantId(ctx);
+    const uid = Number(ctx?.id);
+    const roleStr = String(ctx?.role || '').trim().toLowerCase();
+    const isAdmin = roleStr === 'admin' || roleStr === 'super admin';
+    const isManager = roleStr === 'sales manager' || roleStr === 'manager';
+
+    const vals: any[] = [tenantId];
+    let n = 2;
+    let scopeClause = '';
+
+    if (!isAdmin && Number.isFinite(uid) && uid > 0) {
+      if (isManager) {
+        scopeClause = ` AND (g.created_by IS NULL OR g.created_by = $${n} OR g.created_by IN (SELECT id FROM users WHERE sales_manager_id = $${n} AND tenant_id = $${n + 1}))`;
+        vals.push(uid, tenantId > 0 ? tenantId : null);
+        n += 2;
+      } else {
+        scopeClause = ` AND (g.created_by IS NULL OR g.created_by = $${n++})`;
+        vals.push(uid);
+      }
+    }
+
     return (await this.db.query(
       `SELECT g.*,po.po_number,v.name AS vendor_name FROM grn g
        JOIN purchase_orders po ON po.id=g.po_id JOIN vendors v ON v.id=po.vendor_id
-       WHERE ($1::integer = 0 OR g.tenant_id = $1)
-       ORDER BY g.received_at DESC`, [tenantId]
+       WHERE ($1::integer = 0 OR g.tenant_id = $1)${scopeClause}
+       ORDER BY g.received_at DESC`, vals
     )).rows;
   }
   async getGRN(id: number, ctx?: any) {
@@ -123,10 +163,30 @@ export class PurchaseService {
 
   async listPurchaseInvoices(ctx?: any) {
     const tenantId = this.requireTenantId(ctx);
+    const uid = Number(ctx?.id);
+    const roleStr = String(ctx?.role || '').trim().toLowerCase();
+    const isAdmin = roleStr === 'admin' || roleStr === 'super admin';
+    const isManager = roleStr === 'sales manager' || roleStr === 'manager';
+
+    const vals: any[] = [tenantId];
+    let n = 2;
+    let scopeClause = '';
+
+    if (!isAdmin && Number.isFinite(uid) && uid > 0) {
+      if (isManager) {
+        scopeClause = ` AND (pi.created_by IS NULL OR pi.created_by = $${n} OR pi.created_by IN (SELECT id FROM users WHERE sales_manager_id = $${n} AND tenant_id = $${n + 1}))`;
+        vals.push(uid, tenantId > 0 ? tenantId : null);
+        n += 2;
+      } else {
+        scopeClause = ` AND (pi.created_by IS NULL OR pi.created_by = $${n++})`;
+        vals.push(uid);
+      }
+    }
+
     return (await this.db.query(
       `SELECT pi.*,v.name AS vendor_name FROM purchase_invoices pi JOIN vendors v ON v.id=pi.vendor_id
-       WHERE ($1::integer = 0 OR pi.tenant_id = $1)
-       ORDER BY pi.created_at DESC`, [tenantId]
+       WHERE ($1::integer = 0 OR pi.tenant_id = $1)${scopeClause}
+       ORDER BY pi.created_at DESC`, vals
     )).rows;
   }
   async stats(ctx?: any) {

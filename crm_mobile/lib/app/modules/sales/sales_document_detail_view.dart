@@ -22,6 +22,13 @@ Color _appBarBg(BuildContext context) {
 Color _appBarFg(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark ? Theme.of(context).colorScheme.onSurface : Colors.white;
 
+String _fmtWeight(num v) {
+  if (v <= 0) return '—';
+  if (v < 1) return '${(v * 1000).toStringAsFixed(0)} g';
+  if (v < 1000) return '${v.toStringAsFixed(3)} kg';
+  return '${(v / 1000).toStringAsFixed(3)} t';
+}
+
 String _titleForKind(SalesDocumentKind k) {
   return switch (k) {
     SalesDocumentKind.quotation => 'Quotation',
@@ -662,6 +669,7 @@ Widget _lineItemsCard(BuildContext context, List<Map<String, dynamic>> items, bo
             final qty = parseDynamicNum(it['quantity']);
             final up = parseDynamicNum(it['unit_price']);
             final amt = SalesDocumentDetailController.lineAmount(it);
+            final lw = parseDynamicNum(it['line_weight']);
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
@@ -680,6 +688,11 @@ Widget _lineItemsCard(BuildContext context, List<Map<String, dynamic>> items, bo
                           Text(
                             desc,
                             style: TextStyle(fontSize: 12, color: isDark ? cs.onSurfaceVariant : Colors.grey.shade600),
+                          ),
+                        if (lw > 0)
+                          Text(
+                            _fmtWeight(lw),
+                            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                           ),
                       ],
                     ),

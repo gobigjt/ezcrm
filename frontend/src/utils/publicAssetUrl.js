@@ -8,10 +8,10 @@ export function resolveApiPublicUrl(path) {
   if (path == null || typeof path !== 'string') return '';
   let p = path.trim();
   if (!p) return '';
-  // Legacy bucket URL support: convert raw Railway endpoint URL to backend proxy path.
+  // Legacy bucket URL support: convert raw storage endpoint URL to backend proxy path.
   // This keeps existing DB rows rendering even if bucket endpoint is private.
-  const bucketEndpoint = (import.meta.env.VITE_RAILWAY_BUCKET_ENDPOINT || '').trim().replace(/\/$/, '');
-  const bucketName = (import.meta.env.VITE_RAILWAY_BUCKET_NAME || '').trim();
+  const bucketEndpoint = (import.meta.env.VITE_STORAGE_BUCKET_ENDPOINT || '').trim().replace(/\/$/, '');
+  const bucketName = (import.meta.env.VITE_STORAGE_BUCKET_NAME || '').trim();
   if (bucketEndpoint && bucketName && p.toLowerCase().startsWith(`${bucketEndpoint.toLowerCase()}/${bucketName.toLowerCase()}/`)) {
     const key = p.slice(`${bucketEndpoint}/${bucketName}/`.length);
     p = `/uploads/bucket/${key}`;

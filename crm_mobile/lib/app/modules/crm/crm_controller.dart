@@ -25,10 +25,12 @@ class CrmController extends GetxController {
 
   final reportingExecutives = <Map<String, dynamic>>[].obs;
 
-  bool get _ownAssignedOnly {
+  bool get canAssignLeads {
     final role = _auth.role.value.trim().toLowerCase();
-    return role == 'sales executive';
+    return role == 'admin' || role == 'super admin' || _auth.canAssignLeads.value;
   }
+
+  bool get _ownAssignedOnly => !canAssignLeads;
 
   bool get _isSalesManager {
     final r = _auth.role.value.trim().toLowerCase();
@@ -39,11 +41,9 @@ class CrmController extends GetxController {
   bool get isSalesManager => _isSalesManager;
 
   String _scopedLeadsQueryPrefix() {
-    if (_isSalesManager && _auth.crmExecutiveScopeId.value != null) {
-      return 'assigned_to=${_auth.crmExecutiveScopeId.value}';
-    }
-    if (!_ownAssignedOnly || _auth.userId.value <= 0) return '';
+    if (!_ownAssignedOnly) return '';
     final uid = _auth.userId.value;
+    if (uid <= 0) return '';
     return 'assigned_to=$uid';
   }
 

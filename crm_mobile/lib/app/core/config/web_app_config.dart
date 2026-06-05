@@ -14,7 +14,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 ///
 /// No trailing slash (trailing slashes are normalized in [ApiClient.normalizeApiBase]).
 class WebAppConfig {
-  static const _railwayApi = 'https://ezcrm-production.up.railway.app/api';
+  static const _productionApi = 'https://api-ezcrm.redonix.in/api';
 
   static String get apiBaseUrl {
     const fromEnv = String.fromEnvironment('API_BASE_URL', defaultValue: '');
@@ -29,8 +29,8 @@ class WebAppConfig {
       } catch (_) {}
       return 'http://127.0.0.1:4000/api';
     }
-    // Android/iOS physical device — use Railway so it works on WiFi AND mobile data.
-    // Override for local dev: flutter run --dart-define=API_BASE_URL=http://192.168.1.2:4000/api
-    return _railwayApi;
+    // Physical device — uses Hostinger VPS production backend.
+    // For local testing on same Wi-Fi: flutter run --dart-define=API_BASE_URL=http://192.168.1.8:4000/api
+    return _productionApi;
   }
 }

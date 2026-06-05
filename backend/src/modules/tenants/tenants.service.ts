@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { DatabaseService } from '../../database/database.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -46,6 +47,7 @@ export class TenantsService {
            t.name,
            t.slug,
            t.is_active,
+           t.max_users,
            t.created_at,
            t.updated_at,
            COUNT(u.id)::int AS users_total,
@@ -72,6 +74,7 @@ export class TenantsService {
          t.name,
          t.slug,
          t.is_active,
+         t.max_users,
          t.created_at,
          t.updated_at,
          COUNT(u.id)::int AS users_total,
@@ -102,6 +105,7 @@ export class TenantsService {
          t.name,
          t.slug,
          t.is_active,
+         t.max_users,
          t.created_at,
          t.updated_at,
          COUNT(u.id)::int AS users_total,
@@ -121,23 +125,35 @@ export class TenantsService {
     if (!name) throw new BadRequestException('Tenant name is required');
     const slug = this.normalizeSlug(body?.slug || name);
     const isActive = body?.is_active ?? true;
+    const maxUsers = Number(body?.max_users ?? 0);
+    const rawPassword = String(body?.admin_password || '').trim() || 'Admin@123';
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+    const adminEmail = `${slug}@${slug}.com`;
+    const adminName = `${name} Admin`;
 
     try {
       const res = await this.db.query(
-        `INSERT INTO tenants (name, slug, is_active)
-         VALUES ($1, $2, $3)
-         RETURNING id, name, slug, is_active, created_at, updated_at`,
-        [name, slug, isActive],
+        `INSERT INTO tenants (name, slug, is_active, max_users)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, name, slug, is_active, max_users, created_at, updated_at`,
+        [name, slug, isActive, maxUsers],
       );
       const row = res.rows[0];
+
+      await this.db.query(
+        `INSERT INTO users (name, email, password, role, role_id, tenant_id, is_active)
+         VALUES ($1, $2, $3, 'Admin', (SELECT id FROM roles WHERE name='Admin' LIMIT 1), $4, true)`,
+        [adminName, adminEmail, hashedPassword, row.id],
+      );
+
       this.audit.log({
         user_id: actorId,
         action: 'create_tenant',
         module: 'tenants',
         record_id: row.id,
-        details: { name: row.name, slug: row.slug, is_active: row.is_active },
+        details: { name: row.name, slug: row.slug, is_active: row.is_active, admin_email: adminEmail },
       });
-      return row;
+      return { ...row, admin_email: adminEmail };
     } catch (e: any) {
       if (String(e?.code) === '23505') {
         throw new ConflictException('Tenant slug already exists');
@@ -165,6 +181,10 @@ export class TenantsService {
       sets.push(`is_active=$${i++}`);
       vals.push(Boolean(body.is_active));
     }
+    if (body?.max_users !== undefined) {
+      sets.push(`max_users=$${i++}`);
+      vals.push(Number(body.max_users));
+    }
     if (!sets.length) {
       return this.getTenant(id);
     }
@@ -177,7 +197,7 @@ export class TenantsService {
         `UPDATE tenants
             SET ${sets.join(', ')}
           WHERE id=$${i}
-          RETURNING id, name, slug, is_active, created_at, updated_at`,
+          RETURNING id, name, slug, is_active, max_users, created_at, updated_at`,
         vals,
       );
       if (!res.rows[0]) throw new NotFoundException('Tenant not found');
@@ -195,6 +215,21 @@ export class TenantsService {
       }
       throw e;
     }
+  }
+
+  async deleteTenant(id: number, actorId?: number) {
+    const t = await this.db.query('SELECT id, name FROM tenants WHERE id=$1', [id]);
+    if (!t.rows[0]) throw new NotFoundException('Tenant not found');
+    await this.db.query('DELETE FROM users WHERE tenant_id=$1', [id]);
+    await this.db.query('DELETE FROM tenants WHERE id=$1', [id]);
+    this.audit.log({
+      user_id: actorId,
+      action: 'delete_tenant',
+      module: 'tenants',
+      record_id: id,
+      details: { name: t.rows[0].name },
+    });
+    return { deleted: true };
   }
 
   async toggleTenantStatus(id: number, actorId?: number) {

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
+import { formatWeight } from '../../utils/formatWeight';
 
 function imgSrc(path) {
   if (!path) return '';
@@ -107,6 +108,7 @@ export default function InventoryProductDetail() {
             <Info label="Purchase Price" value={`₹${Number(product.purchase_price || 0).toLocaleString('en-IN')}`} />
             <Info label="Sales Price" value={`₹${Number(product.sale_price || 0).toLocaleString('en-IN')}`} />
             <Info label="GST %" value={product.gst_rate} />
+            <Info label="Weight" value={formatWeight(product.weight)} />
           </div>
         </div>
       </div>
