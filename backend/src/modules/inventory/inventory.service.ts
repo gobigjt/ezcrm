@@ -209,12 +209,7 @@ export class InventoryService {
   }
   async updateProduct(id: number, d: any, ctx?: any) {
     const tenantId = this.requireTenantId(ctx);
-<<<<<<< HEAD
     const fields = ['name','code','sku','hsn_code','category','brand_id','description','unit','purchase_price','sale_price','image_url','gst_rate','low_stock_alert','weight','is_active'];
-=======
-    const fields = ['name','code','sku','hsn_code','category','brand_id','description','unit','purchase_price','sale_price','image_url','gst_rate','low_stock_alert','is_active'];
-    const numericFields = ['purchase_price', 'sale_price', 'gst_rate', 'low_stock_alert'];
->>>>>>> Change-Leads-only-landing-admin-User
     const sets: string[] = []; const vals: any[] = []; let i = 1;
     const numericFields = ['purchase_price', 'sale_price', 'gst_rate', 'low_stock_alert', 'weight'];
     for (const f of fields) {
