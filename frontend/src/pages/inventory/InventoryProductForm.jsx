@@ -132,10 +132,10 @@ export default function InventoryProductForm() {
         category: String(form.category || '').trim(),
         brand_id: String(form.brand_id || '').trim(),
         unit: String(form.unit || '').trim() || 'pcs',
-        purchase_price: String(form.purchase_price || '').trim(),
-        sale_price: String(form.sale_price || '').trim(),
-        gst_rate: String(form.gst_rate || '').trim(),
-        low_stock_alert: String(form.low_stock_alert || '').trim(),
+        purchase_price: String(form.purchase_price ?? '').trim(),
+        sale_price: String(form.sale_price ?? '').trim(),
+        gst_rate: String(form.gst_rate ?? '').trim(),
+        low_stock_alert: String(form.low_stock_alert ?? '').trim(),
       };
       let product;
       if (isEdit) {

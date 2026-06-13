@@ -208,12 +208,16 @@ export class InventoryService {
   async updateProduct(id: number, d: any, ctx?: any) {
     const tenantId = this.requireTenantId(ctx);
     const fields = ['name','code','sku','hsn_code','category','brand_id','description','unit','purchase_price','sale_price','image_url','gst_rate','low_stock_alert','is_active'];
+    const numericFields = ['purchase_price', 'sale_price', 'gst_rate', 'low_stock_alert'];
     const sets: string[] = []; const vals: any[] = []; let i = 1;
     for (const f of fields) {
       if (d[f] === undefined) continue;
       let nextVal = d[f];
       if (f === 'brand_id') {
         nextVal = this.toNullableInt(d[f]);
+      } else if (numericFields.includes(f)) {
+        const n = Number(nextVal);
+        nextVal = Number.isFinite(n) ? n : 0;
       }
       sets.push(`${f}=$${i++}`);
       vals.push(nextVal);
