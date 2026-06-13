@@ -644,14 +644,7 @@ function buildSalesDocumentHtml(
   );
   const createdByName = escapeHtml(doc.creator_name || doc.created_by_name || doc.created_by || '—');
   const bankDetails = formatBankDetailsBlock(company);
-  let billingAddress = (doc.customer_billing_address || doc.customer_address || '').trim();
-  // Strip customer name from first line of billing address if it was stored there
-  if (doc.customer_name) {
-    const lines = billingAddress.split('\n');
-    if (lines[0].trim().toLowerCase() === String(doc.customer_name).trim().toLowerCase()) {
-      billingAddress = lines.slice(1).join('\n').trim();
-    }
-  }
+  const billingAddress = (doc.customer_billing_address || doc.customer_address || '').trim();
   const deliveryAddress = (doc.customer_shipping_address || billingAddress).trim();
 
   const metaLeft = [
