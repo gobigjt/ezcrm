@@ -486,6 +486,7 @@ function buildTemplate2Html(d: {
     <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #000">
       <div style="background:#00B4D8;color:#fff;font-weight:700;padding:5px 8px;font-size:10px">Billing Address</div>
       <div style="padding:8px 10px;line-height:1.6">
+        <strong>${escapeHtml(doc.customer_name || '')}</strong>${doc.customer_name ? '<br/>' : ''}
         ${escapeHtml(billingAddress).replace(/\n/g, '<br/>')}
         ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
       </div>
@@ -804,6 +805,7 @@ function buildSalesDocumentHtml(
       <td style="width:50%;vertical-align:top;padding:0;border-right:1px solid #000; ">
         <div style="background:#0096C7;color:#fff;font-weight:700;padding:4px 4px 10px 4px;border-bottom:1px solid #000;font-size:11px">Billing Address</div>
         <div style="padding:7px 10px 18px;font-size:11px;line-height:1.6">
+          <strong>${escapeHtml(doc.customer_name || '')}</strong>${doc.customer_name ? '<br/>' : ''}
           ${escapeHtml(billingAddress).replace(/\n/g, '<br/>')}
           ${doc.customer_gstin ? `<br/>GSTIN : ${escapeHtml(doc.customer_gstin)}` : ''}
         </div>

@@ -1525,7 +1525,9 @@ export class SalesService {
         [id, tenantId],
       ),
       this.db.query(
-        `SELECT qi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
+        `SELECT qi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code,
+                COALESCE(NULLIF(qi.unit_weight,0), pr.weight, 0) AS unit_weight,
+                COALESCE(NULLIF(qi.line_weight,0), pr.weight * qi.quantity, 0) AS line_weight
            FROM quotation_items qi LEFT JOIN products pr ON pr.id=qi.product_id WHERE qi.quotation_id=$1`,
         [id],
       ),
@@ -1684,7 +1686,9 @@ export class SalesService {
         [id, tenantId],
       ),
       this.db.query(
-        `SELECT oi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code
+        `SELECT oi.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code,
+                COALESCE(NULLIF(oi.unit_weight,0), pr.weight, 0) AS unit_weight,
+                COALESCE(NULLIF(oi.line_weight,0), pr.weight * oi.quantity, 0) AS line_weight
            FROM sales_order_items oi LEFT JOIN products pr ON pr.id=oi.product_id WHERE oi.order_id=$1`,
         [id],
       ),
@@ -1952,7 +1956,9 @@ export class SalesService {
         [id, tenantId],
       ),
       this.db.query(
-        `SELECT ii.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code, ii.unit_weight, ii.line_weight
+        `SELECT ii.*, pr.name AS product_name, pr.hsn_code AS product_hsn_code,
+                COALESCE(NULLIF(ii.unit_weight,0), pr.weight, 0) AS unit_weight,
+                COALESCE(NULLIF(ii.line_weight,0), pr.weight * ii.quantity, 0) AS line_weight
            FROM invoice_items ii LEFT JOIN products pr ON pr.id=ii.product_id WHERE ii.invoice_id=$1`,
         [id],
       ),
