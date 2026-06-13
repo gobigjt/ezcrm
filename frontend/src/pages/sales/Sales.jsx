@@ -675,14 +675,13 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
     const nextId = e.target.value;
     const picked = customers.find((c) => String(c.id) === String(nextId));
     const addr = pickCustomerAddresses(picked);
-    const hasShipping = Boolean(addr.shipping);
     setForm((f) => ({
       ...f,
       customer_id: nextId,
       customer_billing_address: addr.billing,
-      customer_shipping_address: hasShipping ? addr.shipping : addr.billing,
+      customer_shipping_address: addr.shipping,
     }));
-    setQuoteSameAsBilling(!hasShipping);
+    setQuoteSameAsBilling(false);
   };
 
   const canPickOtherExecutive = ['Admin', 'Super Admin', 'Sales Manager'].includes(user?.role || '');
@@ -717,12 +716,11 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
       if (String(f.customer_id || '') !== String(form.customer_id || '')) return f;
       const picked = customers.find((c) => String(c.id) === String(f.customer_id));
       const addr = pickCustomerAddresses(picked);
-      const hasShipping = Boolean(addr.shipping);
-      setQuoteSameAsBilling(!hasShipping);
+      setQuoteSameAsBilling(false);
       return {
         ...f,
         customer_billing_address: addr.billing,
-        customer_shipping_address: hasShipping ? addr.shipping : addr.billing,
+        customer_shipping_address: addr.shipping,
       };
     });
   }, [isQuote, existingId, customers, form.customer_id, form.customer_billing_address, form.customer_shipping_address]);
@@ -1164,6 +1162,9 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
                     setQuoteSameAsBilling(checked);
                     if (checked) {
                       setForm((f) => ({ ...f, customer_shipping_address: f.customer_billing_address || '' }));
+                    } else {
+                      const addr = pickCustomerAddresses(selectedCustomer);
+                      setForm((f) => ({ ...f, customer_shipping_address: addr.shipping }));
                     }
                   }}
                 />
