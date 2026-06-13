@@ -675,13 +675,14 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
     const nextId = e.target.value;
     const picked = customers.find((c) => String(c.id) === String(nextId));
     const addr = pickCustomerAddresses(picked);
+    const hasShipping = Boolean(addr.shipping);
     setForm((f) => ({
       ...f,
       customer_id: nextId,
       customer_billing_address: addr.billing,
-      customer_shipping_address: addr.shipping,
+      customer_shipping_address: hasShipping ? addr.shipping : addr.billing,
     }));
-    setQuoteSameAsBilling(false);
+    setQuoteSameAsBilling(!hasShipping);
   };
 
   const canPickOtherExecutive = ['Admin', 'Super Admin', 'Sales Manager'].includes(user?.role || '');
@@ -716,10 +717,12 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
       if (String(f.customer_id || '') !== String(form.customer_id || '')) return f;
       const picked = customers.find((c) => String(c.id) === String(f.customer_id));
       const addr = pickCustomerAddresses(picked);
+      const hasShipping = Boolean(addr.shipping);
+      setQuoteSameAsBilling(!hasShipping);
       return {
         ...f,
         customer_billing_address: addr.billing,
-        customer_shipping_address: addr.shipping,
+        customer_shipping_address: hasShipping ? addr.shipping : addr.billing,
       };
     });
   }, [isQuote, existingId, customers, form.customer_id, form.customer_billing_address, form.customer_shipping_address]);
