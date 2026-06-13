@@ -661,7 +661,7 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
   const [fetchingDoc, setFetchingDoc] = useState(() => Boolean(existingId && (isQuote || isInvoice || isOrder)));
   const [loadErr, setLoadErr]   = useState('');
   const [salesExecs, setSalesExecs] = useState([]);
-  const [quoteSameAsBilling, setQuoteSameAsBilling] = useState(true);
+  const [quoteSameAsBilling, setQuoteSameAsBilling] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const selectedCustomer = useMemo(
     () => customers.find((c) => String(c.id) === String(form.customer_id)),
@@ -675,14 +675,13 @@ function DocumentModal({ type, customers, products, initialCustomerId = '', init
     const nextId = e.target.value;
     const picked = customers.find((c) => String(c.id) === String(nextId));
     const addr = pickCustomerAddresses(picked);
-    const sameAs = !addr.shipping || addr.shipping === addr.billing;
     setForm((f) => ({
       ...f,
       customer_id: nextId,
       customer_billing_address: addr.billing,
-      customer_shipping_address: sameAs ? addr.billing : addr.shipping,
+      customer_shipping_address: addr.shipping,
     }));
-    setQuoteSameAsBilling(sameAs);
+    setQuoteSameAsBilling(false);
   };
 
   const canPickOtherExecutive = ['Admin', 'Super Admin', 'Sales Manager'].includes(user?.role || '');
