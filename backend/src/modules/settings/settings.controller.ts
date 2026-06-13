@@ -162,9 +162,9 @@ export class SettingsController {
     return this.svc.updateModuleSettings(module, body, u.id, u);
   }
 
-  @Get('dashboard')        getDashboardStats(@CurrentUser() u: any)  { return this.svc.getDashboardStats(u); }
-  @Get('dashboard/charts') getDashboardCharts(@CurrentUser() u: any) { return this.svc.getDashboardCharts(u); }
-  @Get('dashboard/team-performance') getTeamPerformance(@CurrentUser() u: any) { return this.svc.getTeamPerformance(u); }
+  @Get('dashboard')                    getDashboardStats(@CurrentUser() u: any)  { return this.svc.getDashboardStats(u); }
+  @Get('dashboard/charts')             getDashboardCharts(@CurrentUser() u: any) { return this.svc.getDashboardCharts(u); }
+  @Get('dashboard/team-performance')   getTeamPerformance(@CurrentUser() u: any) { return this.svc.getTeamPerformance(u); }
 
   @UseGuards(RolesGuard) @Roles('Super Admin')
   @Get('platform/summary')
