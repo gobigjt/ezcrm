@@ -135,18 +135,11 @@ export default function InventoryProductForm() {
         category: String(form.category || '').trim(),
         brand_id: String(form.brand_id || '').trim(),
         unit: String(form.unit || '').trim() || 'pcs',
-<<<<<<< HEAD
-        purchase_price: String(form.purchase_price || '').trim(),
-        sale_price: String(form.sale_price || '').trim(),
-        gst_rate: String(form.gst_rate || '').trim(),
-        low_stock_alert: String(form.low_stock_alert || '').trim(),
-        weight: String(form.weight || '0').trim(),
-=======
         purchase_price: String(form.purchase_price ?? '').trim(),
         sale_price: String(form.sale_price ?? '').trim(),
         gst_rate: String(form.gst_rate ?? '').trim(),
         low_stock_alert: String(form.low_stock_alert ?? '').trim(),
->>>>>>> Change-Leads-only-landing-admin-User
+        weight: String(form.weight ?? '0').trim(),
       };
       let product;
       if (isEdit) {
